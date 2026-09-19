@@ -1,0 +1,583 @@
+import { useMemo, useState } from 'react'
+import {
+  FileText,
+  Download,
+  CalendarDays,
+  Users,
+  CheckCircle2,
+  AlertCircle,
+  Info,
+  Search,
+  X,
+} from 'lucide-react'
+import { useCustomersList } from '../../hooks/queries/useCustomers'
+import { api, downloadFile } from '../../api/client'
+import { Card } from '../../components/ui/Card'
+import { Button } from '../../components/ui/Button'
+import { formatMoney } from '../../lib/utils'
+
+type Periodo = 'dia' | 'semana' | 'mes'
+
+/** Espeja la respuesta de GET /reports/delivery-notes-data (backend). */
+interface DeliveryNoteItem {
+  producto: string
+  cantidad: number
+  precioUnitario: number
+}
+
+interface DeliveryNoteOrder {
+  id: number
+  numero: string
+  entregadoEn: string | null
+  vendedor: string | null
+  conductor: string | null
+  metodoPago: string | null
+  total: number
+  items: DeliveryNoteItem[]
+}
+
+interface DeliveryNoteGroup {
+  cliente: {
+    id: number
+    name: string
+    phone: string | null
+    email: string | null
+    address: string | null
+  }
+  ordenes: DeliveryNoteOrder[]
+  totalPeriodo: number
+}
+
+interface DeliveryNoteData {
+  rango: { desde: string; hasta: string; label: string }
+  emitidoEn: string
+  totalPedidos: number
+  totalGeneral: number
+  grupos: DeliveryNoteGroup[]
+}
+
+const PERIODOS: { value: Periodo; label: string }[] = [
+  { value: 'dia', label: 'Día' },
+  { value: 'semana', label: 'Semana' },
+  { value: 'mes', label: 'Mes' },
+]
+
+const SELECT_CLASS =
+  'w-full rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20'
+
+/** Fecha local → 'YYYY-MM-DD' (sin pasar por UTC, que correría el día). */
+function todayISO(): string {
+  const d = new Date()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
+
+function formatDay(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  return `${dd}/${mm}/${d.getFullYear()}`
+}
+
+/** 'YYYY-MM-DD' → Date LOCAL (el mismo parseo sin UTC que usa el reporte). */
+function parseISO(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+/** Date local → 'YYYY-MM-DD' (sin pasar por UTC). */
+function toISO(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
+
+/** Suma/resta días a un 'YYYY-MM-DD' (fechas locales). */
+function addDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return toISO(new Date(y, m - 1, d + days))
+}
+
+/** Suma/resta meses a un 'YYYY-MM-DD' (fechas locales). */
+function addMonths(iso: string, months: number): string {
+  const [y, m] = iso.split('-').map(Number)
+  return toISO(new Date(y, m - 1 + months, 1))
+}
+
+/** Lunes de la semana que contiene `iso` (semana calendario es-VE). */
+function weekMonday(iso: string): string {
+  const dt = parseISO(iso)
+  const diff = (dt.getDay() + 6) % 7 // 0=domingo → 6, lunes → 0
+  return toISO(new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() - diff))
+}
+
+/** Nombre del mes de un 'YYYY-MM-DD' (ej. "Septiembre 2026"). */
+function monthName(iso: string): string {
+  const base = parseISO(iso)
+  const name = base.toLocaleDateString('es-VE', { month: 'long', year: 'numeric' })
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
+/** Espeja el cálculo del backend para mostrar el rango exacto que se va a generar. */
+function periodPreview(periodo: Periodo, fechaISO: string): string {
+  if (!fechaISO) return 'Elegí una fecha para ver el rango'
+  const [y, m, d] = fechaISO.split('-').map(Number)
+  const base = new Date(y, m - 1, d)
+
+  if (periodo === 'dia') return `Entregas del ${formatDay(base)}`
+
+  if (periodo === 'semana') {
+    const diffToMonday = (base.getDay() + 6) % 7
+    const monday = new Date(y, m - 1, d - diffToMonday)
+    const sunday = new Date(y, m - 1, d - diffToMonday + 6)
+    return `Entregas del ${formatDay(monday)} al ${formatDay(sunday)}`
+  }
+
+  const monthName = base.toLocaleDateString('es-VE', { month: 'long', year: 'numeric' })
+  return `Entregas de ${monthName.charAt(0).toUpperCase()}${monthName.slice(1)}`
+}
+
+export function NotasEntregaPage() {
+  const [clienteId, setClienteId] = useState('')
+  // Typeahead lazy: el dropdown solo muestra resultados de la búsqueda (10).
+  // El nombre elegido se persiste aparte porque el cliente puede no estar
+  // entre los resultados actuales (CTO 2026-09-18: nunca listas enteras).
+  const [customerQuery, setCustomerQuery] = useState('')
+  const [customerName, setCustomerName] = useState('')
+  const [customerOpen, setCustomerOpen] = useState(false)
+  const [periodo, setPeriodo] = useState<Periodo>('dia')
+  const [fecha, setFecha] = useState(todayISO())
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [done, setDone] = useState('')
+
+  // Vista previa web (JSON del backend, antes del PDF)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState('')
+  const [previewNotice, setPreviewNotice] = useState('')
+  const [previewData, setPreviewData] = useState<DeliveryNoteData | null>(null)
+
+  const { data: customersData, isLoading: loadingCustomers } = useCustomersList({
+    search: customerQuery.trim() || undefined,
+    perPage: 10,
+  })
+  const customers = useMemo(
+    () => [...(customersData?.items ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'es')),
+    [customersData],
+  )
+
+  const preview = useMemo(() => periodPreview(periodo, fecha), [periodo, fecha])
+
+  const selectedCustomer = customerName ? { name: customerName } : null
+
+  const pickCustomer = (id: number, name: string) => {
+    setClienteId(String(id))
+    setCustomerName(name)
+    setCustomerQuery(name)
+    setCustomerOpen(false)
+  }
+
+  const clearCustomer = () => {
+    setClienteId('')
+    setCustomerName('')
+    setCustomerQuery('')
+    setCustomerOpen(false)
+  }
+
+  const handleLoadPreview = async () => {
+    setPreviewError('')
+    setPreviewNotice('')
+    setPreviewData(null)
+    setPreviewLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('periodo', periodo)
+      if (fecha) params.set('fecha', fecha)
+      if (clienteId) params.set('clienteId', clienteId)
+
+      const res = await api.get<{ data: DeliveryNoteData | null; message?: string }>(
+        `/reports/delivery-notes-data?${params.toString()}`,
+      )
+      if (res.data && res.data.data) {
+        setPreviewData(res.data.data)
+      } else {
+        // "No hay entregas en el período" → aviso neutro, no error.
+        setPreviewNotice(res.data?.message ?? 'No hay pedidos entregados en el período seleccionado.')
+      }
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'No se pudo cargar la vista previa')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const handleGenerate = async () => {
+    setError('')
+    setNotice('')
+    setDone('')
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('periodo', periodo)
+      if (fecha) params.set('fecha', fecha)
+      if (clienteId) params.set('clienteId', clienteId)
+
+      const result = await downloadFile(
+        `/reports/delivery-notes?${params.toString()}`,
+        'notas-entrega.pdf',
+      )
+
+      // "No hay entregas en el período" no es un error: es un aviso neutro.
+      if (!result.downloaded) {
+        setNotice(result.message ?? 'No hay nada para descargar en el período seleccionado.')
+        return
+      }
+
+      setDone(
+        selectedCustomer
+          ? `Nota de entrega de ${selectedCustomer.name} generada correctamente.`
+          : 'Notas de entrega generadas correctamente (un cliente por página).',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo generar el PDF')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fechaLabel =
+    periodo === 'dia'
+      ? 'Fecha (día exacto)'
+      : periodo === 'semana'
+        ? 'Semana (lunes a domingo)'
+        : 'Mes'
+
+  /** Cambia de período y normaliza la fecha base para que el control sea estable. */
+  const handlePeriodoChange = (p: Periodo) => {
+    setPeriodo(p)
+    if (p === 'semana') {
+      // La fecha base pasa a ser el lunes de la semana actual → navegar de a 7 suma/resta semanas.
+      setFecha(weekMonday(fecha))
+    } else if (p === 'mes') {
+      // La fecha base pasa a ser el día 1 del mes → navegar de a 1 mes es estable.
+      setFecha(fecha.slice(0, 8) + '01')
+    }
+  }
+
+  // Para el control de semana: fecha base = lunes; el domingo es lunes + 6.
+  const semanaInicio =
+    periodo === 'semana'
+      ? weekMonday(fecha)
+      : periodo === 'mes'
+        ? fecha.slice(0, 8) + '01'
+        : fecha
+  const semanaLunes = periodo === 'semana' ? parseISO(weekMonday(fecha)) : null
+  const semanaDomingo = semanaLunes ? new Date(semanaLunes.getFullYear(), semanaLunes.getMonth(), semanaLunes.getDate() + 6) : null
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <FileText className="h-6 w-6 text-spi-navy" />
+          Notas de entrega
+        </h1>
+        <p className="text-sm text-gray-500">
+          Generá el comprobante en PDF de los pedidos entregados, agrupados por cliente.
+        </p>
+      </div>
+
+      <Card>
+        <div className="space-y-5 p-5">
+          {/* Cliente — typeahead lazy (busca server-side, 10 resultados) */}
+          <div>
+            <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-spi-text">
+              <Users className="h-4 w-4 text-gray-400" />
+              Cliente
+            </label>
+            <div className="relative">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={customerQuery}
+                  onChange={(e) => {
+                    setCustomerQuery(e.target.value)
+                    setCustomerOpen(true)
+                    // Al editar, el cliente elegido deja de estar fijo.
+                    if (clienteId && e.target.value !== customerName) {
+                      setClienteId('')
+                      setCustomerName('')
+                    }
+                  }}
+                  onFocus={() => setCustomerOpen(true)}
+                  onBlur={() => setTimeout(() => setCustomerOpen(false), 150)}
+                  placeholder={loadingCustomers ? 'Cargando clientes...' : 'Buscar cliente por nombre...'}
+                  className="w-full rounded-lg border border-spi-border bg-surface py-2 pl-9 pr-9 text-sm text-spi-text placeholder-gray-400 outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20"
+                />
+                {(customerQuery || customerName) && (
+                  <button
+                    type="button"
+                    onClick={clearCustomer}
+                    aria-label="Quitar cliente (todos)"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {customerOpen && (
+                <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-spi-border bg-surface shadow-lg">
+                  {!customerQuery.trim() ? (
+                    <p className="px-4 py-3 text-sm text-gray-400">Escribí para buscar un cliente.</p>
+                  ) : customers.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-gray-400">Sin clientes que coincidan.</p>
+                  ) : (
+                    customers.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          // onMouseDown corre antes que el onBlur del input.
+                          e.preventDefault()
+                          pickCustomer(c.id, c.name)
+                        }}
+                        className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm text-gray-800 hover:bg-gray-50 dark:hover:bg-white/5"
+                      >
+                        <span>{c.name}</span>
+                        {c.phone && <span className="text-xs text-gray-400">{c.phone}</span>}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              {clienteId
+                ? 'Solo se incluirán los pedidos de este cliente.'
+                : 'Un cliente por página, con el detalle de sus productos y totales.'}
+            </p>
+          </div>
+
+          {/* Período */}
+          <div>
+            <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-spi-text">
+              <CalendarDays className="h-4 w-4 text-gray-400" />
+              Período
+            </label>
+            <div className="inline-flex rounded-lg border border-spi-border bg-surface p-1">
+              {PERIODOS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => handlePeriodoChange(p.value)}
+                  className={
+                    'rounded-md px-4 py-1.5 text-sm font-medium transition-colors ' +
+                    (periodo === p.value
+                      ? 'bg-spi-navy text-white'
+                      : 'text-gray-500 hover:text-spi-text')
+                  }
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Fecha — control contextual según el período. El CTO lo pidió explícito:
+              día → elegís el día; semana → elegís la semana; mes → elegís el mes. */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-spi-text">{fechaLabel}</label>
+
+            {periodo === 'dia' && (
+              <input
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className={SELECT_CLASS + ' max-w-xs'}
+                aria-label="Día"
+              />
+            )}
+
+            {periodo === 'semana' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFecha(addDays(semanaInicio, -7))}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-spi-border bg-surface text-spi-text hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                  aria-label="Semana anterior"
+                >
+                  ‹
+                </button>
+                <div className="min-w-52 rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text tabular-nums">
+                  {semanaLunes && semanaDomingo
+                    ? `${formatDay(semanaLunes)} al ${formatDay(semanaDomingo)}`
+                    : '—'}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFecha(addDays(semanaInicio, 7))}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-spi-border bg-surface text-spi-text hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                  aria-label="Semana siguiente"
+                >
+                  ›
+                </button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setFecha(weekMonday(todayISO()))}
+                >
+                  Esta semana
+                </Button>
+              </div>
+            )}
+
+            {periodo === 'mes' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFecha(addMonths(semanaInicio, -1))}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-spi-border bg-surface text-spi-text hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                  aria-label="Mes anterior"
+                >
+                  ‹
+                </button>
+                <div className="min-w-40 rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text">
+                  {fecha ? monthName(fecha.slice(0, 8) + '01') : '—'}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFecha(addMonths(semanaInicio, 1))}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-spi-border bg-surface text-spi-text hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                  aria-label="Mes siguiente"
+                >
+                  ›
+                </button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setFecha(todayISO().slice(0, 8) + '01')}
+                >
+                  Este mes
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Preview del rango */}
+          <div className="rounded-lg border border-spi-border bg-gray-50 dark:bg-white/5 px-4 py-3">
+            <p className="text-sm text-spi-text">{preview}</p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Solo se incluyen pedidos con estado <span className="font-medium">entregado</span>.
+            </p>
+          </div>
+
+          {notice && (
+            <div className="flex items-start gap-2 rounded-lg border border-spi-border bg-gray-50 dark:bg-white/5 p-3 text-sm text-gray-600 dark:text-gray-300">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{notice}</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {done && (
+            <div className="flex items-start gap-2 rounded-lg border border-spi-green/30 bg-spi-green/10 p-3 text-sm text-green-700">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{done}</span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 border-t border-spi-border pt-4">
+            <Button type="button" onClick={handleGenerate} loading={loading}>
+              <Download className="h-4 w-4" />
+              Generar PDF
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {previewError && (
+        <Card className="mt-4">
+          <div className="flex items-start gap-2 p-4 text-sm text-red-600">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{previewError}</span>
+          </div>
+        </Card>
+      )}
+
+      {previewData && (
+        <Card className="mt-4 p-5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <p className="text-lg font-bold text-gray-900">
+              {selectedCustomer ? `NOTA DE ENTREGA — ${selectedCustomer.name}` : 'NOTAS DE ENTREGA'}
+            </p>
+            <p className="text-xs text-gray-400">{previewData.rango.label}</p>
+          </div>
+          <p className="mt-1 text-sm text-gray-500">
+            Pedidos entregados: <span className="font-semibold">{previewData.totalPedidos}</span> · Total:{' '}
+            <span className="font-semibold text-spi-green">{formatMoney(previewData.totalGeneral)}</span>
+          </p>
+
+          <div className="mt-5 space-y-6">
+            {previewData.grupos.map((g) => (
+              <div key={g.cliente.id}>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="font-semibold text-gray-900">{g.cliente.name}</p>
+                  <p className="text-sm font-semibold text-gray-700">
+                    {formatMoney(g.totalPeriodo)}
+                  </p>
+                </div>
+                {g.cliente.phone || g.cliente.email || g.cliente.address ? (
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    {[g.cliente.phone, g.cliente.email, g.cliente.address].filter(Boolean).join(' · ')}
+                  </p>
+                ) : null}
+
+                <div className="mt-2 divide-y divide-spi-border rounded-lg border border-spi-border">
+                  {g.ordenes.map((o) => (
+                    <div key={o.id} className="p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-mono text-xs text-gray-500">{o.numero}</p>
+                        <p className="text-sm font-semibold text-gray-900">{formatMoney(o.total)}</p>
+                      </div>
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        Entregado {o.entregadoEn ? new Date(o.entregadoEn).toLocaleDateString('es-AR', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'} ·{' '}
+                        {o.metodoPago ?? '—'} · {o.vendedor ?? '—'} · {o.conductor ?? '—'}
+                      </p>
+                      {o.items.length > 0 && (
+                        <ul className="mt-2">
+                          {o.items.map((it, idx) => (
+                            <li
+                              key={idx}
+                              className="flex items-center justify-between py-0.5 text-sm text-gray-600"
+                            >
+                              <span>
+                                {it.cantidad}× {it.producto}
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {formatMoney(it.precioUnitario * it.cantidad)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+}

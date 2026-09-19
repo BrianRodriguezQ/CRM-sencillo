@@ -1,0 +1,18 @@
+{
+  "name": "nameemp",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "npm run lint --workspaces"
+  },
+  "devDependencies": {
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.5"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ]
+}

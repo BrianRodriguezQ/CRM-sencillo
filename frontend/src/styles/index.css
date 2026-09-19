@@ -1,0 +1,698 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-spi-navy: #1f2937;
+  --color-spi-gold: #6b7280;
+  --color-spi-green: #64748b;
+  --color-spi-cream: #f9fafb;
+  --color-spi-light: #f3f4f6;
+  --color-spi-dark: #111827;
+  /* Noche del AuthPage (gradiente dark): mismo valor que gray-950 día, pero
+     como gray-950 cambia en .dark, se declara token propio para no hardcodear. */
+  --color-night: #0f1a2e;
+  --color-spi-border: #e5e7eb;
+  --color-spi-gray: #6b7280;
+  --color-surface: #ffffff;
+  --color-spi-text: #111827;
+  --color-primary: #1f2937;
+  --color-accent: #6b7280;
+  --color-success: #16a34a;
+
+  --font-sans: 'Segoe UI', system-ui, -apple-system, 'Inter', Roboto, Arial, sans-serif;
+  --font-display: 'Segoe UI', system-ui, -apple-system, 'Inter', Roboto, Arial, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --color-gray-50: #f8f9fb;
+  --color-gray-100: #f0f2f6;
+  --color-gray-200: #e2e6ee;
+  --color-gray-300: #c9d1de;
+  --color-gray-400: #94a3b8;
+  --color-gray-500: #64748b;
+  --color-gray-600: #475569;
+  --color-gray-700: #334155;
+  --color-gray-800: #263349;
+  --color-gray-900: #20304f;
+  --color-gray-950: #0f1a2e;
+
+  --color-zinc-50: #f8f9fb;
+  --color-zinc-100: #f0f2f6;
+  --color-zinc-200: #e2e6ee;
+  --color-zinc-300: #c9d1de;
+  --color-zinc-400: #94a3b8;
+  --color-zinc-500: #64748b;
+  --color-zinc-600: #475569;
+  --color-zinc-700: #334155;
+  --color-zinc-800: #263349;
+  --color-zinc-900: #20304f;
+  --color-zinc-950: #0f1a2e;
+
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+  --color-red-900: #7f1d1d;
+  --color-red-950: #450a0a;
+
+  --color-emerald-50: #f4faec;
+  --color-emerald-100: #e8f5d9;
+  --color-emerald-200: #d3ebb5;
+  --color-emerald-300: #bbdd8a;
+  --color-emerald-400: #a8d85a;
+  --color-emerald-500: #84cc3a;
+  --color-emerald-600: #6fb832;
+  --color-emerald-700: #5f9a26;
+  --color-emerald-800: #42671f;
+  --color-emerald-900: #35511b;
+  --color-emerald-950: #1d2e0e;
+
+  --color-green-50: #f4faec;
+  --color-green-100: #e8f5d9;
+  --color-green-200: #d3ebb5;
+  --color-green-300: #bbdd8a;
+  --color-green-400: #a8d85a;
+  --color-green-500: #84cc3a;
+  --color-green-600: #6fb832;
+  --color-green-700: #5f9a26;
+  --color-green-800: #42671f;
+  --color-green-900: #35511b;
+  --color-green-950: #1d2e0e;
+
+  --color-amber-50: #fdf9ec;
+  --color-amber-100: #faf1d0;
+  --color-amber-200: #f5e2a1;
+  --color-amber-300: #efd16b;
+  --color-amber-400: #eeca45;
+  --color-amber-500: #e7b334;
+  --color-amber-600: #c09a28;
+  --color-amber-700: #9a7a1e;
+  --color-amber-800: #6e581c;
+  --color-amber-900: #544214;
+  --color-amber-950: #2f2408;
+
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
+
+  --color-violet-50: #f5f3ff;
+  --color-violet-100: #ede9fe;
+  --color-violet-200: #ddd6fe;
+  --color-violet-300: #c4b5fd;
+  --color-violet-400: #a78bfa;
+  --color-violet-500: #8b5cf6;
+  --color-violet-600: #7c3aed;
+  --color-violet-700: #6d28d9;
+  --color-violet-800: #5b21b6;
+  --color-violet-900: #4c1d95;
+  --color-violet-950: #2e1065;
+
+  --color-indigo-50: #eef2ff;
+  --color-indigo-100: #e0e7ff;
+  --color-indigo-200: #c7d2fe;
+  --color-indigo-300: #a5b4fc;
+  --color-indigo-400: #818cf8;
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #4f46e5;
+  --color-indigo-700: #4338ca;
+  --color-indigo-800: #3730a3;
+  --color-indigo-900: #312e81;
+  --color-indigo-950: #1e1b4b;
+
+  --color-sky-50: #f0f9ff;
+  --color-sky-100: #e0f2fe;
+  --color-sky-200: #bae6fd;
+  --color-sky-300: #7dd3fc;
+  --color-sky-400: #38bdf8;
+  --color-sky-500: #0ea5e9;
+  --color-sky-600: #0284c7;
+  --color-sky-700: #0369a1;
+  --color-sky-800: #075985;
+  --color-sky-900: #0c4a6e;
+  --color-sky-950: #082f49;
+
+  --color-rose-50: #fff1f2;
+  --color-rose-100: #ffe4e6;
+  --color-rose-200: #fecdd3;
+  --color-rose-300: #fda4af;
+  --color-rose-400: #fb7185;
+  --color-rose-500: #f43f5e;
+  --color-rose-600: #e11d48;
+  --color-rose-700: #be123c;
+  --color-rose-800: #9f1239;
+  --color-rose-900: #881337;
+  --color-rose-950: #4c0519;
+
+  --color-orange-50: #fff7ed;
+  --color-orange-100: #ffedd5;
+  --color-orange-200: #fed7aa;
+  --color-orange-300: #fdba74;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-orange-700: #c2410c;
+  --color-orange-800: #9a3412;
+  --color-orange-900: #7c2d12;
+  --color-orange-950: #431407;
+}
+
+.dark {
+  /* Controles nativos (select, option, date, scrollbars) en modo oscuro */
+  color-scheme: dark;
+
+  --color-spi-cream: #1e1e1e;
+  --color-spi-light: #2a2a2a;
+  --color-spi-border: #333333;
+  --color-spi-gray: #9ca3af;
+  --color-surface: #141414;
+  --color-spi-text: #e0e0e0;
+
+  --color-gray-50: #121212;
+  --color-gray-100: #1e1e1e;
+  --color-gray-200: #2a2a2a;
+  --color-gray-300: #333333;
+  --color-gray-400: #4b4b4b;
+  --color-gray-500: #9ca3af;
+  --color-gray-600: #b3b9c4;
+  --color-gray-700: #c9ced6;
+  --color-gray-800: #d9dde3;
+  --color-gray-900: #e0e0e0;
+  --color-gray-950: #ededed;
+
+  --color-red-50: #1f1010;
+  --color-red-100: #2b1414;
+  --color-red-200: #3d1c1c;
+  --color-red-300: #5a2a2a;
+  --color-red-400: #b94a4a;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+  --color-red-900: #7f1d1d;
+  --color-red-950: #450a0a;
+
+  --color-amber-50: #1e1708;
+  --color-amber-100: #2b210d;
+  --color-amber-200: #3e300f;
+  --color-amber-300: #5e481a;
+  --color-amber-400: #d1a638;
+  --color-amber-500: #e7b334;
+  --color-amber-600: #c09a28;
+  --color-amber-700: #9a7a1e;
+  --color-amber-800: #6e581c;
+  --color-amber-900: #544214;
+  --color-amber-950: #2f2408;
+
+  --color-blue-50: #0e1a2c;
+  --color-blue-100: #15263a;
+  --color-blue-200: #1d3352;
+  --color-blue-300: #2a4a75;
+  --color-blue-400: #4a8df8;
+
+  --color-purple-50: #1a1228;
+  --color-purple-100: #221934;
+  --color-purple-200: #2e2245;
+  --color-purple-300: #3f2f5e;
+  --color-purple-400: #a855f7;
+
+  --color-violet-50: #170f2a;
+  --color-violet-100: #1e1536;
+  --color-violet-200: #2a1e4d;
+  --color-violet-300: #3d2b6b;
+  --color-violet-400: #a78bfa;
+
+  --color-indigo-50: #101527;
+  --color-indigo-100: #171e38;
+  --color-indigo-200: #202a4c;
+  --color-indigo-300: #2d3a6e;
+  --color-indigo-400: #818cf8;
+
+  --color-sky-50: #0c1b24;
+  --color-sky-100: #122632;
+  --color-sky-200: #1a3444;
+  --color-sky-300: #24485e;
+  --color-sky-400: #38bdf8;
+
+  --color-rose-50: #2a1216;
+  --color-rose-100: #351820;
+  --color-rose-200: #48222c;
+  --color-rose-300: #663040;
+  --color-rose-400: #fb7185;
+
+  --color-orange-50: #251808;
+  --color-orange-100: #301f0d;
+  --color-orange-200: #452b12;
+  --color-orange-300: #613d1b;
+  --color-orange-400: #fb923c;
+
+  --color-green-50: #131a0c;
+  --color-green-100: #1a2411;
+  --color-green-200: #243318;
+  --color-green-300: #33471f;
+  --color-green-400: #a8d85a;
+
+  --color-emerald-50: #131a0c;
+  --color-emerald-100: #1a2411;
+  --color-emerald-200: #243318;
+  --color-emerald-300: #33471f;
+  --color-emerald-400: #a8d85a;
+
+  --color-lime-50: #191d0c;
+  --color-lime-100: #21270f;
+  --color-lime-200: #2d3516;
+  --color-lime-300: #3f4a1f;
+  --color-lime-400: #a3e635;
+
+  --color-yellow-50: #1e1a08;
+  --color-yellow-100: #29230c;
+  --color-yellow-200: #373012;
+  --color-yellow-300: #4c4018;
+  --color-yellow-400: #facc15;
+
+  --color-teal-50: #0d1b18;
+  --color-teal-100: #122622;
+  --color-teal-200: #1a332e;
+  --color-teal-300: #24483f;
+  --color-teal-400: #2dd4bf;
+
+  --color-cyan-50: #0c1b1d;
+  --color-cyan-100: #11262a;
+  --color-cyan-200: #19343a;
+  --color-cyan-300: #23474f;
+  --color-cyan-400: #22d3ee;
+
+  --color-pink-50: #29121e;
+  --color-pink-100: #331826;
+  --color-pink-200: #462234;
+  --color-pink-300: #603048;
+  --color-pink-400: #f472b6;
+}
+
+/* OVERRIDES DARK DE TEXTO — van FUERA de capas para ganar contra utilities de Tailwind.
+   En Tailwind v4, @layer base PIERDE contra @layer utilities; unlayered SIEMPRE gana. */
+
+/* Textos grises oscuros (50-400) sin dark: variant → subir a casi blanco legible (gray-600 #B3B9C4).
+   Mantiene la jerarquía: los textos secundarios quedan un punto debajo del casi blanco puro.
+   Sin :is() a propósito: el optimizer de LightningCSS genera un warning falso ahí; selectores
+   separados son equivalentes y no ensucian el build. */
+.dark .text-gray-50,
+.dark .text-gray-100,
+.dark .text-gray-200,
+.dark .text-gray-300,
+.dark .text-gray-400,
+.dark .placeholder-gray-400 {
+  color: var(--color-gray-600);
+}
+
+/* Textos navy (spi-navy) que NO son el logo sobre gold → casi blanco en dark.
+   El logo (bg-spi-gold + text-spi-navy) se excluye con :not(...) para mantener la marca. */
+.dark .text-spi-navy:not(.bg-spi-gold) {
+  color: var(--color-gray-900);
+}
+
+/* Creamos la "class to exclude" inline para el logo: si alguna vez un texto spi-navy está
+   dentro de un contenedor bg-spi-gold, se excluye igual. */
+.dark .bg-spi-gold .text-spi-navy,
+.dark .bg-spi-gold.text-spi-navy {
+  color: var(--color-spi-navy);
+}
+
+/* Selects/inputs SIN clase bg propia → en dark reciben fondo oscuro base.
+   Va en @layer base (NO unlayered) para que utilities como bg-transparent, dark:bg-gray-200
+   o bg-surface sigan ganando. color-scheme dark maneja option/dropdown/date/scrollbars. */
+@layer base {
+  .dark
+    :is(
+      select,
+      input[type='text'],
+      input[type='email'],
+      input[type='password'],
+      input[type='number'],
+      input[type='date'],
+      input[type='tel'],
+      input[type='url'],
+      textarea
+    ) {
+    background-color: var(--color-gray-200);
+    color: var(--color-gray-900);
+  }
+  .dark select option,
+  .dark select optgroup {
+    background-color: var(--color-gray-200);
+    color: var(--color-gray-900);
+  }
+}
+
+/* Acentos azules y verde de marca → versiones 400-grade en dark para contraste sobre #141414.
+   blue-500/600 (#3B82F6/#2563EB) pasan a blue-400 (#4A8DF8); spi-green (#84CC3A) a green-400 (#A8D85A). */
+.dark :is(.text-blue-500, .text-blue-600, .text-spi-green) {
+  color: var(--color-blue-400);
+}
+.dark .text-spi-green {
+  color: var(--color-green-400);
+}
+
+/* Placeholders de inputs en dark → gris legible */
+.dark :is(input::placeholder, textarea::placeholder) {
+  color: var(--color-gray-500);
+}
+
+@layer base {
+  body {
+    @apply font-sans bg-surface text-gray-900 antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display;
+  }
+
+  h1 {
+    @apply text-3xl font-bold tracking-tight text-gray-900;
+  }
+
+  h2 {
+    @apply text-2xl font-bold tracking-tight text-gray-900;
+  }
+
+  h3 {
+    @apply text-lg font-semibold text-gray-900;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed bg-primary text-white hover:bg-spi-dark;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed bg-accent text-white hover:bg-amber-700;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed border-2 border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white dark:hover:bg-spi-text dark:hover:text-spi-dark;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 hover:bg-gray-100 dark:hover:bg-white/10;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 text-white hover:bg-red-700;
+  }
+
+  .btn-green {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed bg-success text-white hover:bg-emerald-600 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50;
+  }
+
+  .btn-sm {
+    @apply px-2.5 py-1 text-xs;
+  }
+
+  .btn-md {
+    @apply px-3.5 py-1.5 text-sm;
+  }
+
+  .btn-lg {
+    @apply px-5 py-2.5 text-base;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.7s var(--ease-premium) forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.8s var(--ease-premium) forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.6s var(--ease-premium) forwards;
+}
+
+.animate-slide-left {
+  animation: slide-left 0.6s var(--ease-premium) forwards;
+}
+
+.animate-slide-right {
+  animation: slide-right 0.6s var(--ease-premium) forwards;
+}
+
+.animate-stagger-1 {
+  animation-delay: 0.05s;
+}
+.animate-stagger-2 {
+  animation-delay: 0.12s;
+}
+.animate-stagger-3 {
+  animation-delay: 0.2s;
+}
+.animate-stagger-4 {
+  animation-delay: 0.28s;
+}
+.animate-stagger-5 {
+  animation-delay: 0.36s;
+}
+.animate-stagger-6 {
+  animation-delay: 0.44s;
+}
+
+.animate-hidden {
+  opacity: 0;
+  transform: translateY(30px);
+}
+
+.animate-hidden-scale {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+.animate-hidden-left {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+.animate-hidden-right {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+/* ── Theme transition (smooth dark/light switch) ─ */
+*,
+*::before,
+*::after {
+  transition-duration: 0s;
+  transition-property: background-color, color, border-color, fill, stroke;
+}
+
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition-duration: 0.5s;
+  transition-timing-function: ease;
+}
+
+/* ── Smooth scroll ─────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── Mesh gradient animado (hero) ──────────── */
+@keyframes mesh-shift {
+  0% {
+    background-position: 0% 0%;
+  }
+  25% {
+    background-position: 100% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+  75% {
+    background-position: 0% 100%;
+  }
+  100% {
+    background-position: 0% 0%;
+  }
+}
+
+.animate-mesh {
+  background-size: 200% 200%;
+  animation: mesh-shift 12s ease-in-out infinite;
+}
+
+/* ── Scroll progress bar ───────────────────── */
+.scroll-progress {
+  @apply fixed top-0 left-0 right-0 h-[3px] z-50;
+  background: linear-gradient(90deg, var(--color-spi-gold), var(--color-spi-green));
+  transform-origin: left;
+  transition: width 0.1s linear;
+}
+
+/* ── Ambient background orbs ──────────────── */
+@keyframes orb-drift-1 {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  25% {
+    transform: translate(40px, -30px) scale(1.05);
+  }
+  50% {
+    transform: translate(-30px, 50px) scale(0.95);
+  }
+  75% {
+    transform: translate(50px, 20px) scale(1.02);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+@keyframes orb-drift-2 {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(-50px, 30px) scale(0.97);
+  }
+  66% {
+    transform: translate(30px, -50px) scale(1.04);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+@keyframes orb-drift-3 {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  20% {
+    transform: translate(60px, 40px) scale(1.03);
+  }
+  40% {
+    transform: translate(-20px, -60px) scale(0.95);
+  }
+  60% {
+    transform: translate(-50px, 20px) scale(1.02);
+  }
+  80% {
+    transform: translate(30px, -30px) scale(0.98);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+/* ── Scrollbar fina y visible (ambos ejes/themes) ─ */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 130, 150, 0.45) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(120, 130, 150, 0.45);
+  border-radius: 9999px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 130, 150, 0.7);
+}
+html.dark .scrollbar-thin {
+  scrollbar-color: rgba(160, 170, 190, 0.4) transparent;
+}
+html.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(160, 170, 190, 0.4);
+}
+html.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(160, 170, 190, 0.65);
+}

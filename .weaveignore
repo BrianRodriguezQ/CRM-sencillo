@@ -1,0 +1,44 @@
+# Build artifacts
+target/
+dist/
+build/
+out/
+
+# Dependencies
+node_modules/
+vendor/
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Version control
+.git/
+
+# WeaveEngine internal
+.weave/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Binary files
+*.exe
+*.dll
+*.so
+*.dylib
+*.bin
+
+# Large data files
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Graph database (split-brain fix - never index graph files)
+**/graph.db
+**/graph.db-shm
+**/graph.db-wal
+**/graph.db-journal

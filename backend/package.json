@@ -1,0 +1,44 @@
+{
+  "name": "nameemp-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx --import dotenv/config --watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.16",
+    "@hono/node-server": "^1.19.0",
+    "@hono/zod-validator": "^0.4.3",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.8",
+    "jsonwebtoken": "^9.0.2",
+    "otplib": "^13.5.0",
+    "pdfmake": "^0.2.20",
+    "postgres": "^3.4.5",
+    "qrcode": "^1.5.4",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/pdfmake": "^0.3.3",
+    "@types/qrcode": "^1.5.6",
+    "@vitest/coverage-v8": "^4.1.9",
+    "eslint": "^10.7.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.63.0",
+    "vitest": "^4.1.9"
+  }
+}

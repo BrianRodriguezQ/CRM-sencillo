@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+backend/uploads/
+*.sql
+package-lock.json

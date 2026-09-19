@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.env
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/data/
+backend/test-results.txt
+# Base de datos embebida de PGlite (dev) — contiene postmaster.pid y locks
+backend/.pglite/
+*.log
+*.err
+*.tsbuildinfo
+.DS_Store
+
+# Docker
+.docker/
+
+# Coverage
+coverage/
+frontend/coverage/
+backend/coverage/
+
+# Caché de modelos ONNX (fastembed)
+.fastembed_cache/
+
+# Estado local del orquestador WeaveTeam
+.weave/
