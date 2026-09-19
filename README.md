@@ -1,7 +1,7 @@
-# NAME@EMP — Delivery CRM
+# L&L System — Delivery CRM
 
-Plantilla de CRM de ventas y delivery: clientes, órdenes, reparto y notas de entrega.
-Single-tenant (una empresa por instalación), 3 roles, con panel de administración y PWA.
+CRM de ventas y delivery: clientes, órdenes, reparto y notas de entrega.
+Single-tenant (una empresa por instalación), 3 roles, panel de administración y PWA.
 
 ## Stack
 
@@ -12,8 +12,7 @@ Single-tenant (una empresa por instalación), 3 roles, con panel de administraci
 | Frontend   | React 19, Vite, Tailwind CSS v4, TanStack Query, PWA |
 | Calidad    | ESLint, Prettier, Vitest (+ Testing Library, MSW)    |
 
-> PGlite es Postgres compilado a WASM: en desarrollo **no hace falta levantar un servidor
-> de base de datos**. El schema y las migraciones son idénticos en producción.
+> PGlite es Postgres compilado a WASM: en desarrollo **no hace falta levantar un servidor de base de datos**. El schema y las migraciones son idénticos en producción.
 
 ## Roles
 
@@ -56,8 +55,7 @@ Todas con contraseña `Demo1234!`.
 | `vendedor`   | `vendedor1@nameemp.com`, `vendedor2@nameemp.com`                             |
 | `conductor`  | `conductor1@nameemp.com`, `conductor2@nameemp.com`, `conductor3@nameemp.com` |
 
-El seed también crea 5 clientes (Cliente Uno…Cinco) y 3 métodos de pago
-(Efectivo, Transferencia, Tarjeta).
+El seed también crea 5 clientes y 3 métodos de pago (Efectivo, Transferencia, Tarjeta).
 
 ## Scripts
 
@@ -83,8 +81,7 @@ npm test --workspace=frontend
 npm run lint --workspace=frontend
 ```
 
-> `npm run build --workspace=frontend` encadena type-check + build y puede tardar. Para
-> iterar rápido usá `npx tsc -b` y `npx vite build` por separado.
+> `npm run build --workspace=frontend` encadena type-check + build y puede tardar. Para iterar rápido usá `npx tsc -b` y `npx vite build` por separado.
 
 ## Estructura
 
@@ -111,8 +108,7 @@ npm run lint --workspace=frontend
 
 ## API
 
-Todos los endpoints viven bajo `/api`. Salvo `/auth/*`, requieren
-`Authorization: Bearer <token>`.
+Todos los endpoints viven bajo `/api`. Salvo `/auth/*`, requieren `Authorization: Bearer <token>`.
 
 | Grupo                  | Endpoints                                                             |
 | ---------------------- | --------------------------------------------------------------------- |
@@ -131,9 +127,7 @@ Todos los endpoints viven bajo `/api`. Salvo `/auth/*`, requieren
 GET /api/reports/delivery-notes?clienteId=<opcional>&periodo=dia|semana|mes&fecha=YYYY-MM-DD
 ```
 
-Genera una nota por cliente con las órdenes entregadas en el período (una página por
-cliente). Roles: `superadmin` y `vendedor`; un `vendedor` solo ve sus propias entregas.
-Los períodos se calculan en hora local: `dia` = 00:00 del día a 00:00 del siguiente.
+Genera una nota por cliente con las órdenes entregadas en el período (una página por cliente). Roles: `superadmin` y `vendedor`; un `vendedor` ve **todas** las entregas del cliente filtrado (no solo las suyas). Los períodos se calculan en hora local: `dia` = 00:00 del día a 00:00 del siguiente.
 
 ## Estado de una orden
 
@@ -147,15 +141,10 @@ created → assigned → in_transit → delivered
 ## Notas de producción
 
 - **`JWT_SECRET` es obligatorio** y debe ser un valor propio: `openssl rand -hex 32`.
-- **`DATABASE_URL`** — si está definida, se usa PostgreSQL (vía `postgres-js`); si no,
-  PGlite contra `./.pglite`. Nunca commitees `.pglite/`: es una base local de desarrollo.
+- **`DATABASE_URL`** — si está definida, se usa PostgreSQL (vía `postgres-js`); si no, PGlite contra `./.pglite`. Nunca commitees `.pglite/`: es una base local de desarrollo.
 - **`BUSINESS_NAME`** — nombre que aparece en el encabezado y pie de los PDF.
-- **Reseteo de contraseñas:** el sistema NO manda emails. El `superadmin` le asigna al
-  empleado una contraseña temporal desde el panel (`POST /api/users/:id/reset-password`),
-  y el sistema lo obliga a cambiarla en el primer login (mientras tanto no le da sesión,
-  solo un `challengeToken`) y le revoca las sesiones que tuviera abiertas.
-- El **rate limiter es en memoria**: cada instancia tiene sus propios contadores. Con
-  múltiples instancias hace falta Redis (ver `src/middleware/rate-limit.ts`).
+- **Reseteo de contraseñas:** el sistema NO manda emails. El `superadmin` le asigna al empleado una contraseña temporal desde el panel (`POST /api/users/:id/reset-password`), y el sistema lo obliga a cambiarla en el primer login (mientras tanto no le da sesión, solo un `challengeToken`) y le revoca las sesiones que tuviera abiertas.
+- El **rate limiter es en memoria**: cada instancia tiene sus propios contadores. Con múltiples instancias hace falta Redis (ver `src/middleware/rate-limit.ts`).
 - `docker-compose.yml` **no expone** el puerto de Postgres al host a propósito.
 
 ## Licencia
