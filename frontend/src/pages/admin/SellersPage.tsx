@@ -79,9 +79,9 @@ export function SellersPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Vendedores</h1>
+        <h1 className="text-2xl font-bold text-gray-900">operadores</h1>
         <p className="text-sm text-gray-500">
-          {total} vendedor{total === 1 ? '' : 'es'} · organizan y levantan las órdenes del negocio
+          {total} operador{total === 1 ? '' : 'es'} · organizan y levantan las órdenes del negocio
         </p>
       </div>
 
@@ -94,7 +94,7 @@ export function SellersPage() {
                 type="text"
                 value={search}
                 onChange={(e) => handleSearch(e.target.value)}
-                placeholder="Buscar vendedor por nombre, correo o teléfono..."
+                placeholder="Buscar operador por nombre, correo o teléfono..."
                 className="w-full rounded-lg border border-spi-border bg-surface py-2 pl-9 pr-3 text-sm text-spi-text placeholder-gray-400 outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20"
               />
             </div>
@@ -116,7 +116,7 @@ export function SellersPage() {
         <LoadingState />
       ) : sellers.length === 0 ? (
         <Card>
-          <EmptyState icon={Store} title="Sin vendedores" description="No se encontraron vendedores." />
+          <EmptyState icon={Store} title="Sin operadores" description="No se encontraron operadores." />
         </Card>
       ) : (
         <>

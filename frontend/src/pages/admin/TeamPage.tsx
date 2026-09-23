@@ -33,7 +33,7 @@ import { Pagination } from '../../components/ui/Pagination'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   superadmin: 'Superadmin',
-  vendedor: 'Vendedor',
+  operador: 'operador',
   conductor: 'Conductor',
 }
 
@@ -44,7 +44,7 @@ const EMPTY_FORM = {
   address: '',
   email: '',
   phone: '',
-  role: 'vendedor' as UserRole,
+  role: 'operador' as UserRole,
   password: '',
 }
 
@@ -206,7 +206,7 @@ export function TeamPage() {
       <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Equipo</h1>
-          <p className="text-sm text-gray-500">Vendedores y conductores de la plataforma.</p>
+          <p className="text-sm text-gray-500">operadores y conductores de la plataforma.</p>
         </div>
         <Button type="button" onClick={openCreate}>
           <Plus className="h-4 w-4" />
@@ -241,7 +241,7 @@ export function TeamPage() {
             >
               <option value="">Todos los roles</option>
               <option value="superadmin">Superadmin</option>
-              <option value="vendedor">Vendedor</option>
+              <option value="operador">operador</option>
               <option value="conductor">Conductor</option>
             </select>
             <select
@@ -492,7 +492,7 @@ export function TeamPage() {
               Rol
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {(['vendedor', 'conductor', 'superadmin'] as UserRole[]).map((r) => (
+              {(['operador', 'conductor', 'superadmin'] as UserRole[]).map((r) => (
                 <button
                   key={r}
                   type="button"

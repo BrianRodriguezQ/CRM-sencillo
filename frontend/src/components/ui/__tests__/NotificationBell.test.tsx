@@ -2,7 +2,7 @@
  * Tests — NotificationBell
  *
  * Lógica del CRM: la campana avisa al conductor que tiene una orden asignada,
- * al vendedor que la orden cambió de estado, y a ambos cuando hay un mensaje.
+ * al operador que la orden cambió de estado, y a ambos cuando hay un mensaje.
  *
  * Comportamiento:
  *  - El badge sale del contador liviano (`/notifications/unread-count`).

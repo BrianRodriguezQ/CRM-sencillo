@@ -17,7 +17,7 @@ export interface Driver {
   activeOrderCount: number
 }
 
-/** Vendedor tal como lo devuelve GET /users/sellers (solo superadmin). */
+/** operador tal como lo devuelve GET /users/sellers (solo superadmin). */
 export interface Seller {
   id: number
   name: string

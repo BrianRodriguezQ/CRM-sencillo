@@ -1,9 +1,10 @@
 /**
- * Dashboard — métricas por rol (v2, CTO 2026-09).
- *   - superadmin: totals globales + equipo + top vendedores + top conductores
+ * Dashboard — métricas por rol (v3, CTO 2026-09).
+ *   - superadmin: totals globales + equipo + top operadores + top conductores
  *                 + recientes. El detalle individual del equipo se ve en
  *                 GET /user/:id (páginas /admin/equipo/:id, decisión 3-B).
- *   - vendedor:   totals de SUS órdenes + clientes top + recientes.
+ *   - operador:   totals de SUS órdenes + clientes top + recientes.
+ *   - cobranza:   cuentas por cobrar, resumen financiero, notas de entrega
  *   - conductor:  totals de SU trabajo (incluye ganancia de entregadas) + recientes.
  *
  * Contrato con el frontend (hooks/queries/useDeliveryDashboard):
@@ -11,21 +12,24 @@
  *                 topSellers: [{id,name,totalOrders,totalAmount}],
  *                 topDrivers: [{id,name,deliveredCount,totalDelivered}],
  *                 recentOrders: Order[] }
- *   vendedor:   { totals, myOrders, unassigned,
+ *   operador:   { totals, myOrders, unassigned,
  *                 topCustomers: [{id,name,totalOrders,totalAmount}],
  *                 recentOrders: Order[] }
+ *   cobranza:   { totals, pendingRevenue, pendingOrders, topDebtors,
+ *                 recentOrders, paymentStats }
  *   conductor:  { totals, recentOrders }
  *
  * Regla de ingresos v2 (dinero REAL cobrado):
  *   totalRevenue = Σ order_payments (pagos registrados)
  *   - para el conductor: solo pagos de órdenes SUYAS ENTREGADAS (decisión 2-A).
  *   pendingRevenue = Σ orders.amount con paymentStatus pending|partial.
+ *   paymentPending = órdenes con flag payment_pending = true (para cobranza).
  */
 import { Hono } from 'hono'
 import { eq, and, gte, lt, count, desc, inArray, sql, type SQL } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { orders, customers, users, orderPayments } from '../db/schema.js'
-import { authMiddleware, requireRole, requireSuperadmin } from '../middleware/auth.js'
+import { orders, customers, users, orderPayments, paymentMethods } from '../db/schema.js'
+import { authMiddleware, requireRole, requireSuperadmin, requireOperador, requireCobranza } from '../middleware/auth.js'
 import type { JWTPayload } from '../utils/jwt.js'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
@@ -170,10 +174,10 @@ async function namesFor(ids: ReadonlyArray<number | null | undefined>) {
 /* ─── GET / — dashboard superadmin ─── */
 
 router.get('/', requireSuperadmin, async (c) => {
-  const [totals, sellerRows, driverRows, [activeSellers], [activeDrivers], [totalCustomers], recent] =
+  const [totals, sellerRows, driverRows, [activeOperadores], [activeDrivers], [totalCustomers], recent] =
     await Promise.all([
       totalsFor(),
-      // Top 5 vendedores por ganancia generada (pagos cobrados a sus pedidos).
+      // Top 5 operadores por ganancia generada (pagos cobrados a sus pedidos).
       db
         .select({
           sellerId: orders.sellerId,
@@ -198,7 +202,7 @@ router.get('/', requireSuperadmin, async (c) => {
         .groupBy(orders.driverId)
         .orderBy(desc(sql`coalesce(sum(case when ${orders.orderStatus} = 'delivered' then ${orderPayments.amount} else 0 end), 0)`))
         .limit(5),
-      db.select({ count: count() }).from(users).where(eq(users.role, 'vendedor')),
+      db.select({ count: count() }).from(users).where(eq(users.role, 'operador')),
       db
         .select({ count: count() })
         .from(users)
@@ -214,12 +218,12 @@ router.get('/', requireSuperadmin, async (c) => {
     success: true,
     data: {
       totals,
-      activeSellers: Number(activeSellers?.count ?? 0),
+      activeOperadores: Number(activeOperadores?.count ?? 0),
       activeDrivers: Number(activeDrivers?.count ?? 0),
       totalCustomers: Number(totalCustomers?.count ?? 0),
-      topSellers: sellerRows.map((r) => ({
+      topOperadores: sellerRows.map((r) => ({
         id: r.sellerId,
-        name: sellerNames.get(r.sellerId) ?? `Vendedor ${r.sellerId}`,
+        name: sellerNames.get(r.sellerId) ?? `Operador ${r.sellerId}`,
         totalOrders: Number(r.totalOrders),
         totalAmount: toNumber(r.totalAmount),
       })),
@@ -234,9 +238,9 @@ router.get('/', requireSuperadmin, async (c) => {
   })
 })
 
-/* ─── GET /seller — dashboard del vendedor ─── */
+/* ─── GET /operador — dashboard del operador ─── */
 
-router.get('/seller', requireRole('vendedor'), async (c) => {
+router.get('/operador', requireOperador, async (c) => {
   const auth = c.get('user')
   const scope: SQL = eq(orders.sellerId, auth.id)
 
@@ -248,7 +252,7 @@ router.get('/seller', requireRole('vendedor'), async (c) => {
       .where(scope)
       .then((r) => Number(r[0]?.count ?? 0)),
     // "Sin asignar": creadas por mí, sin conductor y todavía en Inicio
-    // (decisión 1-A: card separada para el vendedor).
+    // (decisión 1-A: card separada para el operador).
     db
       .select({ count: count() })
       .from(orders)
@@ -288,6 +292,85 @@ router.get('/seller', requireRole('vendedor'), async (c) => {
   })
 })
 
+
+/* ─── GET /cobranza — dashboard de cobranza ─── */
+
+router.get('/cobranza', requireCobranza, async (c) => {
+  // Cobranza ve todas las órdenes con paymentStatus pendiente/parcial + payment_pending = true
+  const pendingScope = inArray(orders.paymentStatus, ['pending', 'partial'])
+  const paymentPendingScope = and(pendingScope, eq(orders.paymentPending, true))
+
+  const [totals, pendingRevenueRow, pendingOrdersRow, debtorRows, recent, paymentStatsRows] = await Promise.all([
+    totalsFor(), // global totals
+    // Ingresos pendientes totales (suma de amount donde paymentStatus pending/partial)
+    db
+      .select({ total: sql<string>`coalesce(sum(${orders.amount}), 0)` })
+      .from(orders)
+      .where(pendingScope),
+    // Cantidad de órdenes pendientes
+    db
+      .select({ count: count() })
+      .from(orders)
+      .where(pendingScope),
+    // Top deudores: clientes con mayor monto pendiente
+    db
+      .select({
+        customerId: orders.customerId,
+        customerName: customers.name,
+        customerPhone: customers.phone,
+        customerEmail: customers.email,
+        pendingAmount: sql<string>`coalesce(sum(${orders.amount}), 0)`,
+        pendingOrders: count(),
+      })
+      .from(orders)
+      .innerJoin(customers, eq(customers.id, orders.customerId))
+      .where(pendingScope)
+      .groupBy(orders.customerId, customers.name, customers.phone, customers.email)
+      .orderBy(desc(sql`coalesce(sum(${orders.amount}), 0)`))
+      .limit(10),
+    recentOrdersFor(),
+    // Estadísticas de pagos por método
+    db
+      .select({
+        method: paymentMethods.name,
+        methodCode: paymentMethods.code,
+        totalAmount: sql<string>`coalesce(sum(${orderPayments.amount}), 0)`,
+        count: count(),
+      })
+      .from(orderPayments)
+      .innerJoin(paymentMethods, eq(paymentMethods.id, orderPayments.paymentMethodId))
+      .groupBy(paymentMethods.name, paymentMethods.code)
+      .orderBy(desc(sql`coalesce(sum(${orderPayments.amount}), 0)`)),
+  ])
+
+  const pendingRevenue = toNumber(pendingRevenueRow?.[0]?.total)
+  const pendingOrders = Number(pendingOrdersRow?.[0]?.count ?? 0)
+
+  return c.json({
+    success: true,
+    data: {
+      totals,
+      pendingRevenue,
+      pendingOrders,
+      topDebtors: debtorRows.map((r) => ({
+        customerId: r.customerId,
+        customerName: r.customerName ?? `Cliente ${r.customerId}`,
+        customerPhone: r.customerPhone,
+        customerEmail: r.customerEmail,
+        pendingAmount: toNumber(r.pendingAmount),
+        pendingOrders: Number(r.pendingOrders),
+      })),
+      recentOrders: recent,
+      paymentStats: paymentStatsRows.map((r) => ({
+        method: r.method,
+        methodCode: r.methodCode,
+        totalAmount: toNumber(r.totalAmount),
+        count: Number(r.count),
+      })),
+    },
+  })
+})
+
 /* ─── GET /driver — dashboard del conductor ─── */
 
 router.get('/driver', requireRole('conductor'), async (c) => {
@@ -312,7 +395,7 @@ router.get('/driver', requireRole('conductor'), async (c) => {
 
 /* ─── GET /user/:id — detalle de rendimiento de un miembro (solo superadmin) ───
  * Decisión 3-B: el superadmin ve la métrica individual navegando a
- * /admin/equipo/:id. Targets válidos: vendedor o conductor.
+ * /admin/equipo/:id. Targets válidos: operador, cobranza o conductor.
  */
 
 router.get('/user/:id', requireSuperadmin, async (c) => {
@@ -332,16 +415,19 @@ router.get('/user/:id', requireSuperadmin, async (c) => {
   if (target.role === 'superadmin') {
     return c.json({ success: false, error: 'No aplica para el superadmin' }, 400)
   }
+  if (target.role === 'cobranza') {
+    return c.json({ success: false, error: 'Cobranza no tiene métrica individual por usuario' }, 400)
+  }
 
   const scope: SQL =
     target.role === 'conductor' ? eq(orders.driverId, id) : eq(orders.sellerId, id)
-  // Conductor: ingreso = sus entregadas y pagadas (2-A). Vendedor: todos sus pagos.
+  // Conductor: ingreso = sus entregadas y pagadas (2-A). Operador: todos sus pagos.
   const paidScope =
     target.role === 'conductor' ? and(scope, eq(orders.orderStatus, 'delivered')) : scope
 
   const [totals, unassignedRow, deliveredRow, topCustomers, recent] = await Promise.all([
     totalsFor(scope, paidScope),
-    target.role === 'vendedor'
+    target.role === 'operador'
       ? db
           .select({ count: count() })
           .from(orders)
@@ -353,7 +439,7 @@ router.get('/user/:id', requireSuperadmin, async (c) => {
           .from(orders)
           .where(and(scope, eq(orders.orderStatus, 'delivered')))
       : Promise.resolve([{ count: 0 }]),
-    target.role === 'vendedor'
+    target.role === 'operador'
       ? db
           .select({
             customerId: orders.customerId,
@@ -378,7 +464,7 @@ router.get('/user/:id', requireSuperadmin, async (c) => {
       user: { id: target.id, name: target.name, role: target.role },
       totals,
       // Métricas específicas del rol (0 para el que no corresponde).
-      unassigned: target.role === 'vendedor' ? Number(unassignedRow?.[0]?.count ?? 0) : 0,
+      unassigned: target.role === 'operador' ? Number(unassignedRow?.[0]?.count ?? 0) : 0,
       delivered: target.role === 'conductor' ? Number(deliveredRow?.[0]?.count ?? 0) : 0,
       topCustomers: topCustomers.map((r) => ({
         id: r.customerId,

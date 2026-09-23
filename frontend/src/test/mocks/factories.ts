@@ -7,7 +7,7 @@
 
 /* ── Users ───────────────────────────────────── */
 
-export type MockUserRole = 'superadmin' | 'vendedor' | 'conductor'
+export type MockUserRole = 'superadmin' | 'operador' | 'conductor'
 
 export interface MockUser {
   id: number
@@ -36,12 +36,12 @@ export function createMockUser(overrides: Partial<MockUser> = {}): MockUser {
   }
 }
 
-export function createMockVendedor(overrides: Partial<MockUser> = {}): MockUser {
+export function createMockoperador(overrides: Partial<MockUser> = {}): MockUser {
   return createMockUser({
     id: 2,
-    name: 'Vendedor Test',
-    email: 'vendedor@nameemp.com',
-    role: 'vendedor',
+    name: 'operador Test',
+    email: 'operador@nameemp.com',
+    role: 'operador',
     ...overrides,
   })
 }

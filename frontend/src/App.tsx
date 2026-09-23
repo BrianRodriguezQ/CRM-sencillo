@@ -47,7 +47,7 @@ export default function App() {
             <Route path="conductores" element={<Navigate to="/admin/equipo/conductores" replace />} />
             <Route path="equipo" element={<TeamPage />} />
             <Route path="equipo/conductores" element={<DriversPage />} />
-            <Route path="equipo/vendedores" element={<SellersPage />} />
+            <Route path="equipo/operadores" element={<SellersPage />} />
             <Route path="equipo/:id" element={<TeamMemberDetailPage />} />
             <Route path="metodos-pago" element={<PaymentMethodsPage />} />
             <Route path="notas-entrega" element={<NotasEntregaPage />} />

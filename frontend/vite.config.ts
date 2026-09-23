@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'NAME@EMP — Delivery CRM',
-        short_name: 'NAME@EMP',
+        name: 'L&L System — Delivery CRM',
+        short_name: 'L&L System',
         description: 'Plataforma de gestión de pedidos y delivery',
         theme_color: '#1F2937',
         background_color: '#ffffff',
@@ -63,9 +63,10 @@ export default defineConfig({
     // Sin esto Vite queda solo en [::1] (IPv6 loopback) y cualquier acceso por
     // IPv4/LAN/celular da "Failed to fetch".
     host: true,
+    port: 5174,
     proxy: {
-      '/api': 'http://localhost:3001',
-      '/uploads': 'http://localhost:3001',
+      '/api': 'http://localhost:3002',
+      '/uploads': 'http://localhost:3002',
     },
   },
 })

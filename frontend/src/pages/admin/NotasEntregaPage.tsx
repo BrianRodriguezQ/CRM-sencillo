@@ -9,8 +9,9 @@ import {
   Info,
   Search,
   X,
+  Building2,
 } from 'lucide-react'
-import { useCustomersList } from '../../hooks/queries/useCustomers'
+import { useCustomersList, useBranches } from '../../hooks/queries/useCustomers'
 import { api, downloadFile } from '../../api/client'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
@@ -29,7 +30,7 @@ interface DeliveryNoteOrder {
   id: number
   numero: string
   entregadoEn: string | null
-  vendedor: string | null
+  operador: string | null
   conductor: string | null
   metodoPago: string | null
   total: number
@@ -144,7 +145,10 @@ export function NotasEntregaPage() {
   // entre los resultados actuales (CTO 2026-09-18: nunca listas enteras).
   const [customerQuery, setCustomerQuery] = useState('')
   const [customerName, setCustomerName] = useState('')
+  const [customerIsGroup, setCustomerIsGroup] = useState(false)
   const [customerOpen, setCustomerOpen] = useState(false)
+  // Sucursal específica de un grupo (vacío = grupo consolidado).
+  const [branchId, setBranchId] = useState('')
   const [periodo, setPeriodo] = useState<Periodo>('dia')
   const [fecha, setFecha] = useState(todayISO())
   const [loading, setLoading] = useState(false)
@@ -167,22 +171,30 @@ export function NotasEntregaPage() {
     [customersData],
   )
 
+  // Sucursales del grupo seleccionado (para generar nota de sucursal puntual).
+  const { data: branches = [] } = useBranches(customerIsGroup && clienteId ? Number(clienteId) : null)
+
   const preview = useMemo(() => periodPreview(periodo, fecha), [periodo, fecha])
 
   const selectedCustomer = customerName ? { name: customerName } : null
 
-  const pickCustomer = (id: number, name: string) => {
+  const pickCustomer = (id: number, name: string, isGroup: boolean) => {
     setClienteId(String(id))
     setCustomerName(name)
+    setCustomerIsGroup(isGroup)
     setCustomerQuery(name)
     setCustomerOpen(false)
+    // Cambió el cliente → resetea la sucursal.
+    setBranchId('')
   }
 
   const clearCustomer = () => {
     setClienteId('')
     setCustomerName('')
+    setCustomerIsGroup(false)
     setCustomerQuery('')
     setCustomerOpen(false)
+    setBranchId('')
   }
 
   const handleLoadPreview = async () => {
@@ -194,7 +206,12 @@ export function NotasEntregaPage() {
       const params = new URLSearchParams()
       params.set('periodo', periodo)
       if (fecha) params.set('fecha', fecha)
-      if (clienteId) params.set('clienteId', clienteId)
+      if (branchId) {
+        // Nota de UNA sucursal: branchId gana sobre clienteId en el backend.
+        params.set('branchId', branchId)
+      } else if (clienteId) {
+        params.set('clienteId', clienteId)
+      }
 
       const res = await api.get<{ data: DeliveryNoteData | null; message?: string }>(
         `/reports/delivery-notes-data?${params.toString()}`,
@@ -221,7 +238,11 @@ export function NotasEntregaPage() {
       const params = new URLSearchParams()
       params.set('periodo', periodo)
       if (fecha) params.set('fecha', fecha)
-      if (clienteId) params.set('clienteId', clienteId)
+      if (branchId) {
+        params.set('branchId', branchId)
+      } else if (clienteId) {
+        params.set('clienteId', clienteId)
+      }
 
       const result = await downloadFile(
         `/reports/delivery-notes?${params.toString()}`,
@@ -341,7 +362,7 @@ export function NotasEntregaPage() {
                         onMouseDown={(e) => {
                           // onMouseDown corre antes que el onBlur del input.
                           e.preventDefault()
-                          pickCustomer(c.id, c.name)
+                          pickCustomer(c.id, c.name, Boolean(c.isGroup))
                         }}
                         className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm text-gray-800 hover:bg-gray-50 dark:hover:bg-white/5"
                       >
@@ -551,7 +572,7 @@ export function NotasEntregaPage() {
                       </div>
                       <p className="mt-0.5 text-xs text-gray-400">
                         Entregado {o.entregadoEn ? new Date(o.entregadoEn).toLocaleDateString('es-AR', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'} ·{' '}
-                        {o.metodoPago ?? '—'} · {o.vendedor ?? '—'} · {o.conductor ?? '—'}
+                        {o.metodoPago ?? '—'} · {o.operador ?? '—'} · {o.conductor ?? '—'}
                       </p>
                       {o.items.length > 0 && (
                         <ul className="mt-2">

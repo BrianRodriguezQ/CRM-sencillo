@@ -1,6 +1,13 @@
 import jwt from 'jsonwebtoken'
 
-export type Role = 'superadmin' | 'vendedor' | 'conductor'
+/**
+ * Roles del sistema (post-refactor 2026):
+ * - superadmin: acceso total
+ * - operador: antes "operador" — toma pedidos, gestiona sus clientes
+ * - cobranza: gestiona cobros, cuentas por cobrar, resumen financiero, notas de entrega
+ * - conductor: solo lectura, ve sus entregas asignadas
+ */
+export type Role = 'superadmin' | 'operador' | 'cobranza' | 'conductor'
 
 export type JWTPayload = {
   id: number

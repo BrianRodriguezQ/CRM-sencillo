@@ -24,7 +24,7 @@ const router = new Hono<{ Variables: { user: JWTPayload } }>()
 
 router.use('*', authMiddleware)
 
-const ROLE_ENUM = ['vendedor', 'conductor'] as const
+const ROLE_ENUM = ['operador', 'conductor'] as const
 
 // Cédula venezolana: prefijo V- o E- (elector) + dígitos. El superadmin elige
 // el prefijo y el miembro solo completa los números en el formulario.
@@ -178,7 +178,7 @@ router.post('/', requireSuperadmin, zValidator('json', createUserSchema), async 
 })
 
 /** GET /drivers — conductores activos + órdenes activas (superadmin o vendedor). */
-router.get('/drivers', requireRole('superadmin', 'vendedor'), async (c) => {
+router.get('/drivers', requireRole('superadmin', 'operador'), async (c) => {
   const drivers = await db
     .select({ id: users.id, name: users.name, phone: users.phone })
     .from(users)
@@ -225,7 +225,7 @@ router.get('/sellers', requireSuperadmin, async (c) => {
   )
   const offset = (page - 1) * perPage
 
-  const filters: SQL[] = [eq(users.role, 'vendedor')]
+  const filters: SQL[] = [eq(users.role, 'operador')]
   if (isActive !== undefined) filters.push(eq(users.isActive, isActive))
   if (q) {
     const pattern = `%${q}%`

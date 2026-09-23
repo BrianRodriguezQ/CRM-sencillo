@@ -1,10 +1,11 @@
 /**
- * Schema — CRM Batista (plantilla NAME@EMP)
+ * Schema — L&L System CRM
  *
  * Dominio: delivery / ventas por agentes.
- *   - superadmin: dashboard ingresos + actividad equipo/clientes + acceso total
- *   - vendedor: toma pedidos, método de pago, crea orden, asigna conductor
- *   - conductor: recibe notificación + ruta, se comunica con el vendedor
+ *   - superadmin: acceso total
+ *   - operador: toma pedidos, gestiona sus clientes y sucursales
+ *   - cobranza: cobros, cuentas por cobrar, resumen financiero, notas de entrega
+ *   - conductor: solo lectura, ve sus entregas asignadas
  *
  * Stack: Hono + Drizzle (pg-core) + PGlite (Postgres embebido → mismo schema
  * que producción. Migrar al entregar = cambiar connection string).
@@ -21,11 +22,12 @@ import {
   jsonb,
   index,
   numeric,
+  AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 
 /* ═══════════════════════════════════════════════════════════════════════
- * USUARIOS — 3 roles: superadmin | vendedor | conductor
+ * USUARIOS — 4 roles: superadmin | operador | cobranza | conductor
  * ═══════════════════════════════════════════════════════════════════════ */
 
 export const users = pgTable(
@@ -40,7 +42,7 @@ export const users = pgTable(
     address: varchar('address', { length: 255 }),
     phone: varchar('phone', { length: 50 }),
     avatarUrl: varchar('avatar_url', { length: 500 }),
-    role: varchar('role', { length: 20 }).notNull(), // superadmin | vendedor | conductor
+    role: varchar('role', { length: 20 }).notNull(), // superadmin | operador | cobranza | conductor
     isActive: boolean('is_active').default(true).notNull(),
     // D1: 2FA TOTP
     totpSecretEnc: text('totp_secret_enc'),
@@ -63,7 +65,11 @@ export const usersRelations = relations(users, ({ many }) => ({
 }))
 
 /* ═══════════════════════════════════════════════════════════════════════
- * CLIENTES — a quién le vende el vendedor
+ * CLIENTES — franquicias/grupos con sucursales (branches)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * CLIENTES — franquicias/grupos con sucursales (branches)
  * ═══════════════════════════════════════════════════════════════════════ */
 
 export const customers = pgTable(
@@ -71,14 +77,22 @@ export const customers = pgTable(
   {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 255 }).notNull(),
-    // RIF venezolano con prefijo: "J-123456789" (lo completa el vendedor)
+    // RIF venezolano con prefijo: "J-123456789" (lo completa el operador)
     rif: varchar('rif', { length: 20 }),
     phone: varchar('phone', { length: 50 }),
     email: varchar('email', { length: 255 }),
-    address: text('address'),
+    address: text('address'),          // Dirección principal (facturación por defecto)
     notes: text('notes'),
-    // Vendedor que registró/alimentó al cliente
+    // Operador que registró/alimentó al cliente
     createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+    // Grupo/franquicia: si es true, este cliente agrupa sucursales (branches)
+    isGroup: boolean('is_group').default(false).notNull(),
+    // Referencia al grupo padre (para sucursales)
+    parentId: integer('parent_id').references((): AnyPgColumn => customers.id, { onDelete: 'set null' }),
+    // Campos de sucursal (solo para branches, isGroup=false con parentId set)
+    contactPerson: varchar('contact_person', { length: 255 }),
+    isBillingAddress: boolean('is_billing_address').default(false).notNull(),
+    isDeliveryAddress: boolean('is_delivery_address').default(false).notNull(),
     isActive: boolean('is_active').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -86,6 +100,8 @@ export const customers = pgTable(
   (table) => [
     index('idx_customers_created_by').on(table.createdBy),
     index('idx_customers_phone').on(table.phone),
+    index('idx_customers_parent_id').on(table.parentId),
+    index('idx_customers_is_group').on(table.isGroup),
   ],
 )
 
@@ -94,6 +110,12 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
     fields: [customers.createdBy],
     references: [users.id],
   }),
+  parent: one(customers, {
+    fields: [customers.parentId],
+    references: [customers.id],
+    relationName: 'branches',
+  }),
+  branches: many(customers, { relationName: 'branches' }),
   orders: many(orders),
 }))
 
@@ -143,6 +165,8 @@ export const orders = pgTable(
     customerId: integer('customer_id')
       .notNull()
       .references(() => customers.id, { onDelete: 'restrict' }),
+    // Sucursal específica (branch) — opcional, si el cliente es grupo
+    branchId: integer('branch_id').references(() => customers.id, { onDelete: 'set null' }),
     sellerId: integer('seller_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -151,9 +175,11 @@ export const orders = pgTable(
       .notNull()
       .references(() => paymentMethods.id, { onDelete: 'restrict' }),
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
-    paymentStatus: varchar('payment_status', { length: 20 }).notNull().default('pending'), // DERIVADO v2: pending | partial | paid | cancelled
-    orderStatus: varchar('order_status', { length: 20 }).notNull().default('created'), // v2: created | accepted | in_transit | delivered | cancelled
-    // Dirección de entrega (si aplica distinta a la del cliente)
+    paymentStatus: varchar('payment_status', { length: 20 }).notNull().default('pending'), // pending | partial | paid | cancelled
+    // Flag: true = "dejar pago pendiente" (conductor no cobra, cobranza lo gestiona luego)
+    paymentPending: boolean('payment_pending').default(false).notNull(),
+    orderStatus: varchar('order_status', { length: 20 }).notNull().default('created'), // created | accepted | in_transit | delivered | cancelled
+    // Dirección de entrega (si aplica distinta a la del cliente/sucursal)
     deliveryAddress: text('delivery_address'),
     notes: text('notes'),
     deliveredAt: timestamp('delivered_at'),
@@ -162,11 +188,13 @@ export const orders = pgTable(
   },
   (table) => [
     index('idx_orders_customer_id').on(table.customerId),
+    index('idx_orders_branch_id').on(table.branchId),
     index('idx_orders_seller_id').on(table.sellerId),
     index('idx_orders_driver_id').on(table.driverId),
     index('idx_orders_payment_method_id').on(table.paymentMethodId),
     index('idx_orders_order_status').on(table.orderStatus),
     index('idx_orders_payment_status').on(table.paymentStatus),
+    index('idx_orders_payment_pending').on(table.paymentPending),
     index('idx_orders_created_at').on(table.createdAt),
   ],
 )
@@ -174,6 +202,10 @@ export const orders = pgTable(
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   customer: one(customers, {
     fields: [orders.customerId],
+    references: [customers.id],
+  }),
+  branch: one(customers, {
+    fields: [orders.branchId],
     references: [customers.id],
   }),
   seller: one(users, {

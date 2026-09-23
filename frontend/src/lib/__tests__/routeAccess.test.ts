@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest'
 import { canAccessRoute, rolesForPath, isRouteDeclared } from '../routeAccess'
 import type { UserRole } from '../../context/AuthContext'
 
-const ROLES: UserRole[] = ['superadmin', 'vendedor', 'conductor']
+const ROLES: UserRole[] = ['superadmin', 'operador', 'conductor']
 
 describe('routeAccess — rutas permitidas por rol', () => {
   it('superadmin accede a todo el panel', () => {
@@ -28,15 +28,15 @@ describe('routeAccess — rutas permitidas por rol', () => {
     }
   })
 
-  it('vendedor accede a las suyas y NO a las de gestión de usuarios', () => {
-    expect(canAccessRoute('vendedor', '/admin')).toBe(true)
-    expect(canAccessRoute('vendedor', '/admin/ordenes')).toBe(true)
-    expect(canAccessRoute('vendedor', '/admin/clientes')).toBe(true)
-    expect(canAccessRoute('vendedor', '/admin/notas-entrega')).toBe(true)
+  it('operador accede a las suyas y NO a las de gestión de usuarios', () => {
+    expect(canAccessRoute('operador', '/admin')).toBe(true)
+    expect(canAccessRoute('operador', '/admin/ordenes')).toBe(true)
+    expect(canAccessRoute('operador', '/admin/clientes')).toBe(true)
+    expect(canAccessRoute('operador', '/admin/notas-entrega')).toBe(true)
 
-    expect(canAccessRoute('vendedor', '/admin/equipo')).toBe(false)
-    expect(canAccessRoute('vendedor', '/admin/conductores')).toBe(false)
-    expect(canAccessRoute('vendedor', '/admin/metodos-pago')).toBe(false)
+    expect(canAccessRoute('operador', '/admin/equipo')).toBe(false)
+    expect(canAccessRoute('operador', '/admin/conductores')).toBe(false)
+    expect(canAccessRoute('operador', '/admin/metodos-pago')).toBe(false)
   })
 
   it('conductor solo accede a Panel / Órdenes / Mi Perfil', () => {
@@ -65,12 +65,12 @@ describe('routeAccess — matching por prefijo', () => {
     expect(canAccessRoute('conductor', '/admin/equipo/7')).toBe(false)
   })
 
-  it('crear orden es de superadmin/vendedor — el conductor no crea, ejecuta', () => {
+  it('crear orden es de superadmin/operador — el conductor no crea, ejecuta', () => {
     // REGLA DE NEGOCIO: el conductor recibe y ejecuta órdenes, no las crea.
     // La ruta de creación está declarada con sus propios roles (prefijo más
     // largo gana sobre /admin/ordenes) y el backend POST /orders exige lo mismo.
     expect(canAccessRoute('superadmin', '/admin/ordenes/nueva')).toBe(true)
-    expect(canAccessRoute('vendedor', '/admin/ordenes/nueva')).toBe(true)
+    expect(canAccessRoute('operador', '/admin/ordenes/nueva')).toBe(true)
     expect(canAccessRoute('conductor', '/admin/ordenes/nueva')).toBe(false)
   })
 
@@ -79,7 +79,7 @@ describe('routeAccess — matching por prefijo', () => {
     // que está abierto a todos los roles. Lo importante: NO hereda la
     // restricción de superadmin de '/admin/equipo'.
     expect(canAccessRoute('conductor', '/admin/equipoXYZ')).toBe(true)
-    expect(canAccessRoute('vendedor', '/admin/equipoXYZ')).toBe(true)
+    expect(canAccessRoute('operador', '/admin/equipoXYZ')).toBe(true)
 
     // y '/adminX' no es '/admin'
     expect(rolesForPath('/adminX')).toBeNull()

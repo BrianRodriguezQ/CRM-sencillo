@@ -51,7 +51,7 @@ describe('ProtectedRoute', () => {
 
   it('redirige a /login si hay user pero no token', () => {
     ;(mockUseAuth as any).mockReturnValue({
-      user: { role: 'vendedor' },
+      user: { role: 'operador' },
       token: null,
       loading: false,
     })

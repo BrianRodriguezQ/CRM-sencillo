@@ -1,7 +1,7 @@
 /**
- * Middleware de autenticación — CRM Batista (plantilla NAME@EMP).
+ * Middleware de autenticación — L&L System CRM.
  *
- * Roles: superadmin | vendedor | conductor.
+ * Roles: superadmin | operador | cobranza | conductor.
  * Sin companies: este sistema es single-tenant (una empresa por instalación).
  * Verificación de usuario activo en cada request (1 query indexada por PK).
  */
@@ -63,3 +63,12 @@ export function requireRole(...roles: Role[]) {
 
 /** requireSuperadmin — solo el dueño del sistema. */
 export const requireSuperadmin = requireRole('superadmin')
+
+/** requireOperador — operador o superadmin. */
+export const requireOperador = requireRole('superadmin', 'operador')
+
+/** requireCobranza — cobranza o superadmin. */
+export const requireCobranza = requireRole('superadmin', 'cobranza')
+
+/** requireConductor — conductor, operador, cobranza o superadmin. */
+export const requireConductor = requireRole('superadmin', 'operador', 'cobranza', 'conductor')

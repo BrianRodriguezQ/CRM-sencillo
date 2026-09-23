@@ -60,7 +60,7 @@ function makeAuth(variants: Partial<Parameters<typeof mockUseAuth.mockReturnValu
     loading: false,
     isStaff: true,
     isSuperadmin: true,
-    isVendedor: false,
+    isoperador: false,
     isConductor: false,
     requires2FA: false,
     challengeKind: null,
@@ -113,11 +113,11 @@ describe('AdminLayout', () => {
     expect(screen.getAllByText('Métodos de Pago').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('vendedor sees Clientes but not Conductores/Equipo/Métodos de Pago', () => {
+  it('operador sees Clientes but not Conductores/Equipo/Métodos de Pago', () => {
     makeAuth({
-      user: { ...superadminUser, role: 'vendedor' },
+      user: { ...superadminUser, role: 'operador' },
       isSuperadmin: false,
-      isVendedor: true,
+      isoperador: true,
     })
     renderWithProviders(<AdminLayout />)
     expect(screen.getAllByText('Clientes').length).toBeGreaterThanOrEqual(1)
@@ -182,11 +182,11 @@ describe('AdminLayout — guard por rol', () => {
       isSuperadmin: false,
       isConductor: true,
     })
-  const asVendedor = () =>
+  const asoperador = () =>
     makeAuth({
-      user: { ...superadminUser, role: 'vendedor' },
+      user: { ...superadminUser, role: 'operador' },
       isSuperadmin: false,
-      isVendedor: true,
+      isoperador: true,
     })
 
   it('bloquea al conductor que teclea una URL de gestión', () => {
@@ -196,8 +196,8 @@ describe('AdminLayout — guard por rol', () => {
     expect(screen.getByText('No tenés acceso a esta sección')).toBeInTheDocument()
   })
 
-  it('bloquea al vendedor en Métodos de Pago pero no en Notas de entrega', () => {
-    asVendedor()
+  it('bloquea al operador en Métodos de Pago pero no en Notas de entrega', () => {
+    asoperador()
 
     window.history.pushState({}, '', '/admin/metodos-pago')
     const bloqueado = renderWithProviders(<AdminLayout />)

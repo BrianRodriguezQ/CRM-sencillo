@@ -4,16 +4,25 @@ import { api } from '../../api/client'
 export interface Customer {
   id: number
   name: string
-  // RIF venezolano: "J-123456789" (prefijo fijo J- + números que completa el vendedor)
+  // RIF venezolano: "J-123456789" (prefijo fijo J- + números que completa el operador)
   rif?: string | null
   phone?: string | null
   email?: string | null
   address?: string | null
   notes?: string | null
   createdBy?: number | null
+  // Grupo/franquicia
+  isGroup?: boolean
+  parentId?: number | null
+  // Campos de sucursal (para branches)
+  contactPerson?: string | null
+  isBillingAddress?: boolean
+  isDeliveryAddress?: boolean
   isActive: boolean
   createdAt: string
   updatedAt: string
+  // Sucursales anidadas (solo cuando el detalle pide un grupo)
+  branches?: Branch[]
 }
 
 export interface CustomersList {
@@ -48,6 +57,104 @@ export function useCustomersList(params: CustomersListParams = {}) {
   })
 }
 
+/** Grupos/franquicias (isGroup=true) para selector en órdenes. */
+export function useCustomerGroups(params: CustomersListParams = {}) {
+  const searchParams = new URLSearchParams()
+  if (params.page) searchParams.set('page', String(params.page))
+  if (params.perPage) searchParams.set('perPage', String(params.perPage))
+  if (params.search) searchParams.set('search', params.search)
+  const qs = searchParams.toString()
+
+  return useQuery({
+    queryKey: ['customers', 'groups', params],
+    queryFn: async () => {
+      const res = await api.get<CustomersList>(`/customers/groups${qs ? `?${qs}` : ''}`)
+      return res.data
+    },
+  })
+}
+
+/** Sucursales de un grupo/franquicia. */
+export interface Branch {
+  id: number
+  name: string
+  rif?: string | null
+  phone?: string | null
+  email?: string | null
+  address?: string | null
+  contactPerson?: string | null
+  isBillingAddress?: boolean
+  isDeliveryAddress?: boolean
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BranchesList {
+  branches: Branch[]
+}
+
+export function useBranches(groupId: number | null) {
+  return useQuery({
+    queryKey: ['customers', 'branches', groupId],
+    queryFn: async () => {
+      const res = await api.get<BranchesList>(`/customers/${groupId}/branches`)
+      return res.data.branches
+    },
+    enabled: groupId !== null,
+  })
+}
+
+export interface BranchPayload {
+  name: string
+  rif?: string | null
+  phone?: string | null
+  email?: string | null
+  address?: string | null
+  contactPerson?: string | null
+  isBillingAddress?: boolean
+  isDeliveryAddress?: boolean
+  isActive?: boolean
+}
+
+export function useCreateBranch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ groupId, payload }: { groupId: number; payload: BranchPayload }) => {
+      const res = await api.post<Branch>(`/customers/${groupId}/branches`, payload)
+      return res.data
+    },
+    onSuccess: (_, { groupId }) => {
+      qc.invalidateQueries({ queryKey: ['customers', 'branches', groupId] })
+    },
+  })
+}
+
+export function useUpdateBranch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ branchId, payload }: { branchId: number; payload: Partial<BranchPayload> }) => {
+      const res = await api.patch<Branch>(`/customers/branches/${branchId}`, payload)
+      return res.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['customers', 'branches'] })
+    },
+  })
+}
+
+export function useDeleteBranch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (branchId: number) => {
+      await api.del(`/customers/branches/${branchId}`)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['customers', 'branches'] })
+    },
+  })
+}
+
 export interface CustomerPayload {
   name: string
   rif?: string | null
@@ -55,6 +162,7 @@ export interface CustomerPayload {
   email?: string | null
   address?: string | null
   notes?: string | null
+  isGroup?: boolean
 }
 
 export function useCreateCustomer() {

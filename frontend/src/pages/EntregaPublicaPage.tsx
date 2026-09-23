@@ -97,7 +97,7 @@ export function EntregaPublicaPage() {
           </div>
           <h1 className="text-lg font-semibold text-gray-900">Código QR no válido</h1>
           <p className="mt-1 text-sm text-gray-500">
-            {state.error}. Si recibiste esta nota de entrega impresa, comunicate con el vendedor
+            {state.error}. Si recibiste esta nota de entrega impresa, comunicate con el operador
             para verificar.
           </p>
         </Card>

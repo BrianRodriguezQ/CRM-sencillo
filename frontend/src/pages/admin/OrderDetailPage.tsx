@@ -75,7 +75,7 @@ export function OrderDetailPage() {
   const [attachment, setAttachment] = useState<File | null>(null)
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
-  // Reasignación (regla 2-B): el vendedor NO reasigna; el superadmin sí, en Inicio.
+  // Reasignación (regla 2-B): el operador NO reasigna; el superadmin sí, en Inicio.
   const [reassignOpen, setReassignOpen] = useState(false)
 
   // Modal de cancelación (justificación obligatoria, CTO v2)
@@ -113,13 +113,13 @@ export function OrderDetailPage() {
   }
 
   const isSuperadmin = user?.role === 'superadmin'
-  const isVendedor = user?.role === 'vendedor'
+  const isoperador = user?.role === 'operador'
   const isConductor = user?.role === 'conductor'
 
   const orderClosed = order.orderStatus === 'delivered' || order.orderStatus === 'cancelled'
   const canEditPayment = !orderClosed
   const canOperateState = isSuperadmin // v2: SOLO superadmin transiciona como respaldo
-  const canAssign = (isSuperadmin || isVendedor) && order.orderStatus === 'created'
+  const canAssign = (isSuperadmin || isoperador) && order.orderStatus === 'created'
 
   const driverOptions = drivers ?? []
 
@@ -573,7 +573,7 @@ export function OrderDetailPage() {
             </Card>
           )}
 
-          {/* Operaciones (v2: asignación + respaldo del superadmin; el vendedor NO toca estados) */}
+          {/* Operaciones (v2: asignación + respaldo del superadmin; el operador NO toca estados) */}
           {(canAssign || canOperateState) && (
             <Card className="p-6">
               <h2 className="mb-4 text-lg font-semibold text-gray-900">Operar orden</h2>
@@ -586,7 +586,7 @@ export function OrderDetailPage() {
 
               <div className="space-y-5">
                 {/* Asignar conductor (solo estado Inicio).
-                    Regla 2-B: una vez asignado, el vendedor NO toca — ve una tarjeta
+                    Regla 2-B: una vez asignado, el operador NO toca — ve una tarjeta
                     informativa. El superadmin puede reasignar desde la misma tarjeta. */}
                 {canAssign && (
                   <div>
@@ -781,8 +781,8 @@ export function OrderDetailPage() {
             </Card>
           )}
 
-          {/* Comunicaciones conductor ↔ vendedor */}
-          {(isSuperadmin || isVendedor || isConductor) && (
+          {/* Comunicaciones conductor ↔ operador */}
+          {(isSuperadmin || isoperador || isConductor) && (
             <Card className="p-6">
               <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
                 <MessageSquare className="h-5 w-5 text-spi-gold" />

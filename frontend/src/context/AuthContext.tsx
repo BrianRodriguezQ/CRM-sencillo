@@ -9,7 +9,7 @@ import {
   restoreSession,
 } from '../api/client'
 
-export type UserRole = 'superadmin' | 'vendedor' | 'conductor'
+export type UserRole = 'superadmin' | 'operador' | 'conductor'
 
 export interface User {
   id: number
@@ -42,7 +42,7 @@ interface AuthContextType {
   loading: boolean
   isStaff: boolean
   isSuperadmin: boolean
-  isVendedor: boolean
+  isoperador: boolean
   isConductor: boolean
   requires2FA: boolean
   challengeKind: '2fa' | 'password-change' | null
@@ -171,9 +171,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const isSuperadmin = user?.role === 'superadmin'
-  const isVendedor = user?.role === 'vendedor'
+  const isoperador = user?.role === 'operador'
   const isConductor = user?.role === 'conductor'
-  const isStaff = !!user && (isSuperadmin || isVendedor || isConductor)
+  const isStaff = !!user && (isSuperadmin || isoperador || isConductor)
 
   return (
     <AuthContext.Provider
@@ -183,7 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         isStaff,
         isSuperadmin,
-        isVendedor,
+        isoperador,
         isConductor,
         requires2FA: pendingChallenge !== null,
         challengeKind,

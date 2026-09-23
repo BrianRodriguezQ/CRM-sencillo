@@ -52,6 +52,11 @@ export interface Order {
   seller?: Pick<User, 'id' | 'name' | 'email'> | null
   driver?: Pick<User, 'id' | 'name' | 'email' | 'phone'> | null
   paymentMethod?: { id: number; name: string; code: string } | null
+  /** Sucursal (branch) si la orden se facturó a una sucursal del grupo. */
+  branchId?: number | null
+  branch?: { id: number; name: string } | null
+  /** "Dejar pago pendiente" — el conductor no cobra; lo gestiona cobranza. */
+  paymentPending?: boolean
   items?: OrderItem[]
   /** Dinero ya cobrado (Σ order_payments) — el cierre exige saldo 0. */
   paidAmount?: number
@@ -126,12 +131,14 @@ export interface OrderItemInput {
 
 export interface CreateOrderPayload {
   customerId: number
+  branchId?: number | null
   paymentMethodId: number
   driverId?: number | null
   autoAssignDriver?: boolean
   amount?: string
   deliveryAddress?: string | null
   notes?: string | null
+  paymentPending?: boolean
   items?: OrderItemInput[]
 }
 

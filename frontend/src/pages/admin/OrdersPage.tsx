@@ -35,7 +35,7 @@ const PAYMENT_TABS = [
 
 export function OrdersPage() {
   const [searchParams] = useSearchParams()
-  // El card "Sin asignar" del dashboard vendedor llega con ?status=created.
+  // El card "Sin asignar" del dashboard operador llega con ?status=created.
   const initialStatus = (searchParams.get('status') ?? '') as OrderStatus | ''
   // El panel "Pagos pendientes" del dashboard llega con ?payment=pending.
   const initialPayment = (searchParams.get('payment') ?? '') as 'pending' | 'paid' | ''
@@ -127,7 +127,7 @@ export function OrdersPage() {
                 <tr className="border-b border-spi-border text-left text-xs uppercase tracking-wider text-gray-500">
                   <th className="px-4 py-3">N°</th>
                   <th className="px-4 py-3">Cliente</th>
-                  <th className="px-4 py-3">Vendedor</th>
+                  <th className="px-4 py-3">operador</th>
                   <th className="px-4 py-3">Estado</th>
                   <th className="px-4 py-3">Pago</th>
                   <th className="px-4 py-3 text-right">Total</th>

@@ -18,20 +18,20 @@ import type { UserRole } from '../context/AuthContext'
  * el acceso es responsabilidad de quien agrega la ruta.
  */
 const ROUTE_ROLES: Record<string, UserRole[]> = {
-  '/admin': ['superadmin', 'vendedor', 'conductor'],
-  '/admin/ordenes': ['superadmin', 'vendedor', 'conductor'],
+  '/admin': ['superadmin', 'operador', 'conductor'],
+  '/admin/ordenes': ['superadmin', 'operador', 'conductor'],
   // El conductor recibe y ejecuta órdenes; NO crea (el backend también lo exige).
-  '/admin/ordenes/nueva': ['superadmin', 'vendedor'],
-  '/admin/clientes': ['superadmin', 'vendedor'],
+  '/admin/ordenes/nueva': ['superadmin', 'operador'],
+  '/admin/clientes': ['superadmin', 'operador'],
   // Ruta legacy: redirige a /admin/equipo/conductores (se mantiene declarada
   // para que el guard no la abra a roles indebidos mientras vive el redirect).
   '/admin/conductores': ['superadmin'],
   '/admin/equipo': ['superadmin'],
   '/admin/equipo/conductores': ['superadmin'],
-  '/admin/equipo/vendedores': ['superadmin'],
+  '/admin/equipo/operadores': ['superadmin'],
   '/admin/metodos-pago': ['superadmin'],
-  '/admin/notas-entrega': ['superadmin', 'vendedor'],
-  '/admin/perfil': ['superadmin', 'vendedor', 'conductor'],
+  '/admin/notas-entrega': ['superadmin', 'operador'],
+  '/admin/perfil': ['superadmin', 'operador', 'conductor'],
 }
 
 /** Roles que pueden ver `pathname`, o `null` si la ruta no está restringida. */

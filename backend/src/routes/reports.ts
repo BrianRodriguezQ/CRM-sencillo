@@ -1,8 +1,9 @@
 /**
- * Reports — notas de entrega en PDF por cliente y período.
+ * Reports — notas de entrega en PDF por cliente, sucursal y período.
  *
  * GET /reports/delivery-notes
- *   ?clienteId=<int>            (opcional) un cliente puntual
+ *   ?clienteId=<int>            (opcional) un cliente / grupo puntual (consolidado)
+ *   ?branchId=<int>             (opcional) UNA sucursal específica (gana sobre clienteId)
  *   ?periodo=dia|semana|mes     (default: dia)
  *   ?fecha=YYYY-MM-DD           (default: hoy) — fecha base del período
  *
@@ -15,7 +16,8 @@
  *
  * Acceso:
  *   - superadmin: todos los clientes
- *   - vendedor: solo sus pedidos (sellerId)
+ *   - operador: solo sus pedidos (sellerId) — o todos los de un cliente/sucursal con filtro
+ *   - cobranza: todos (gestión de notas de entrega)
  *   - conductor: sin acceso
  */
 import { Hono } from 'hono'
@@ -38,7 +40,7 @@ router.use('*', authMiddleware)
 const sellerAlias = alias(users, 'seller')
 const driverAlias = alias(users, 'driver')
 
-const BUSINESS_NAME = process.env.BUSINESS_NAME || 'NAME@EMP'
+const BUSINESS_NAME = process.env.BUSINESS_NAME || 'L&L System'
 
 /**
  * URL pública de la app para el QR de la ficha digital (WP3).
@@ -136,6 +138,8 @@ function slugify(value: string): string {
 
 const querySchema = z.object({
   clienteId: z.coerce.number().int().positive().optional(),
+  // Sucursal específica (branch). Si viene junto con clienteId, gana branchId.
+  branchId: z.coerce.number().int().positive().optional(),
   periodo: z.enum(PERIODOS).optional().default('dia'),
   fecha: z
     .string()
@@ -212,6 +216,7 @@ interface ClientGroup {
 
 async function buildDeliveryGroups(params: {
   clienteId?: number
+  branchId?: number
   periodo: Periodo
   fecha?: string
   auth: JWTPayload
@@ -223,22 +228,32 @@ async function buildDeliveryGroups(params: {
   hasta: Date
   dto: DeliveryDataDto | null
 }> {
-  const { clienteId, periodo, fecha, auth } = params
+  const { clienteId, branchId, periodo, fecha, auth } = params
 
   const fechaBase = fecha ? parseLocalDate(fecha) : new Date()
   const { desde, hasta } = resolvePeriod(periodo, fechaBase)
 
-  // Scope por rol: el vendedor ve TODOS los pedidos del cliente (no solo los suyos)
-  // cuando se filtra por cliente específico. Superadmin ve todo.
+  // Scope por rol:
+  // - superadmin: ve todo
+  // - operador: si NO hay clienteId ni branchId, ve solo sus pedidos;
+  //   si SÍ hay clienteId o branchId, ve todos los pedidos de esa entidad
+  // - cobranza: ve todo (gestión de cobros y notas de entrega)
+  // - conductor: sin acceso (manejado por middleware)
   const filters: SQL[] = [
     eq(orders.orderStatus, 'delivered'),
     gte(orders.deliveredAt, desde),
     lt(orders.deliveredAt, hasta),
   ]
-  if (clienteId) filters.push(eq(orders.customerId, clienteId))
-  // Solo aplicar filtro de vendedor si NO hay clienteId específico
-  // (si hay clienteId, vendedor ve todos los pedidos de ese cliente)
-  if (!clienteId && auth.role === 'vendedor') filters.push(eq(orders.sellerId, auth.id))
+  // Nota individual de sucursal: filtra por branchId (gana sobre clienteId)
+  if (branchId) {
+    filters.push(eq(orders.branchId, branchId))
+  } else if (clienteId) {
+    filters.push(eq(orders.customerId, clienteId))
+  }
+  // Solo aplicar filtro de operador si NO hay clienteId ni branchId específico
+  // (si hay clienteId/branchId, operador ve todos los pedidos de esa entidad)
+  // cobranza ve todo siempre
+  if (!clienteId && !branchId && auth.role === 'operador') filters.push(eq(orders.sellerId, auth.id))
 
   const rows = (await db
     .select({
@@ -359,7 +374,7 @@ function noDataMessage(clienteId?: number): string {
 
 router.get(
   '/delivery-notes',
-  requireRole('superadmin', 'vendedor'),
+  requireRole('superadmin', 'operador', 'cobranza'),
   zValidator('query', querySchema),
   async (c) => {
     const auth = c.get('user')
@@ -367,6 +382,7 @@ router.get(
 
     const result = await buildDeliveryGroups({
       clienteId: q.clienteId,
+      branchId: q.branchId,
       periodo: q.periodo,
       fecha: q.fecha,
       auth,
@@ -376,7 +392,7 @@ router.get(
       // "No hay entregas en el período" NO es un error: la petición estuvo bien,
       // simplemente no hay nada que generar. 200 + JSON con el aviso, y el
       // cliente detecta que no es un PDF (Content-Type) y avisa en tono neutro.
-      return c.json({ success: true, data: null, message: noDataMessage(q.clienteId) })
+      return c.json({ success: true, data: null, message: noDataMessage(q.clienteId ?? q.branchId) })
     }
 
     const { rows, itemsByOrder, clientGroups, desde, hasta } = result
@@ -435,7 +451,7 @@ router.get(
         [
           hCell('Nº Orden'),
           hCell('Entregado'),
-          hCell('Vendedor'),
+          hCell('operador'),
           hCell('Conductor'),
           hCell('Contenido'),
           hCell('Total', 'right'),
@@ -569,7 +585,7 @@ router.get(
 
 router.get(
   '/delivery-notes-data',
-  requireRole('superadmin', 'vendedor'),
+  requireRole('superadmin', 'operador', 'cobranza'),
   zValidator('query', querySchema),
   async (c) => {
     const auth = c.get('user')
@@ -577,13 +593,14 @@ router.get(
 
     const result = await buildDeliveryGroups({
       clienteId: q.clienteId,
+      branchId: q.branchId,
       periodo: q.periodo,
       fecha: q.fecha,
       auth,
     })
 
     if (result.dto === null) {
-      return c.json({ success: true, data: null, message: noDataMessage(q.clienteId) })
+      return c.json({ success: true, data: null, message: noDataMessage(q.clienteId ?? q.branchId) })
     }
 
 return c.json({ success: true, data: result.dto })
@@ -596,7 +613,7 @@ return c.json({ success: true, data: result.dto })
  */
 router.get(
   '/delivery-note/:id',
-  requireRole('superadmin', 'vendedor', 'conductor'),
+  requireRole('superadmin', 'operador', 'conductor'),
   async (c) => {
     const auth = c.get('user')
     const id = Number(c.req.param('id'))
@@ -636,7 +653,7 @@ router.get(
     if (!order) return c.json({ success: false, error: 'Orden no encontrada' }, 404)
 
     // Scope check
-    if (auth.role === 'vendedor' && order.sellerId !== auth.id) {
+    if (auth.role === 'operador' && order.sellerId !== auth.id) {
       return c.json({ success: false, error: 'Orden no encontrada' }, 404)
     }
     if (auth.role === 'conductor' && order.driverId !== auth.id) {
@@ -711,7 +728,7 @@ router.get(
       : [{ text: 'Sin detalle de productos', fontSize: 8, color: '#9ca3af', italics: true }]
 
     const body: unknown[][] = [
-      [hCell('Nº Orden'), hCell('Entregado'), hCell('Vendedor'), hCell('Conductor'), hCell('Contenido'), hCell('Total', 'right'), hCell('QR', 'center')],
+      [hCell('Nº Orden'), hCell('Entregado'), hCell('operador'), hCell('Conductor'), hCell('Contenido'), hCell('Total', 'right'), hCell('QR', 'center')],
       [
         { text: order.orderNumber, fontSize: 8.5, color: '#111827' },
         {

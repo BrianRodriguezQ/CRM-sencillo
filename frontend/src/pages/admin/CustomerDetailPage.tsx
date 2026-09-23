@@ -14,13 +14,27 @@ import {
   AlertCircle,
   CalendarDays,
   BadgeCheck,
+  Building2,
+  Plus,
+  Pencil,
+  Trash2,
 } from 'lucide-react'
 import { useCustomer } from '../../hooks/queries/useCustomers'
+import {
+  useBranches,
+  useCreateBranch,
+  useUpdateBranch,
+  useDeleteBranch,
+  type Branch,
+  type BranchPayload,
+} from '../../hooks/queries/useCustomers'
 import { useOrdersList } from '../../hooks/queries/useOrders'
 import { ORDER_STATUS_LABELS } from '../../lib/order-status'
 import { api } from '../../api/client'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
+import { Modal } from '../../components/ui/Modal'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Avatar } from '../../components/ui/Avatar'
 import { LoadingState } from '../../components/ui/LoadingState'
@@ -99,7 +113,7 @@ interface DeliveryNoteOrder {
   id: number
   numero: string
   entregadoEn: string | null
-  vendedor: string | null
+  operador: string | null
   metodoPago: string | null
   total: number
   items: DeliveryNoteItem[]
@@ -146,6 +160,98 @@ export function CustomerDetailPage() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState('')
   const [previewNotice, setPreviewNotice] = useState('')
+
+  // Sucursales (solo para grupos/franquicias)
+  const isGroup = Boolean(customer?.isGroup)
+  const { data: branches = [], isLoading: loadingBranches } = useBranches(isGroup ? customerId : null)
+  const { mutate: createBranch, isPending: creatingBranch } = useCreateBranch()
+  const { mutate: updateBranch, isPending: updatingBranch } = useUpdateBranch()
+  const { mutate: deleteBranch } = useDeleteBranch()
+
+  const [branchModalOpen, setBranchModalOpen] = useState(false)
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null)
+  const [branchForm, setBranchForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    contactPerson: '',
+    isBillingAddress: false,
+    isDeliveryAddress: false,
+  })
+  const [branchError, setBranchError] = useState('')
+  const branchSaving = creatingBranch || updatingBranch
+
+  const openBranchCreate = () => {
+    setEditingBranch(null)
+    setBranchForm({
+      name: '',
+      phone: '',
+      email: '',
+      address: '',
+      contactPerson: '',
+      isBillingAddress: false,
+      isDeliveryAddress: false,
+    })
+    setBranchError('')
+    setBranchModalOpen(true)
+  }
+
+  const openBranchEdit = (b: Branch) => {
+    setEditingBranch(b)
+    setBranchForm({
+      name: b.name,
+      phone: b.phone ?? '',
+      email: b.email ?? '',
+      address: b.address ?? '',
+      contactPerson: b.contactPerson ?? '',
+      isBillingAddress: Boolean(b.isBillingAddress),
+      isDeliveryAddress: Boolean(b.isDeliveryAddress),
+    })
+    setBranchError('')
+    setBranchModalOpen(true)
+  }
+
+  const handleBranchSubmit = () => {
+    setBranchError('')
+    if (!branchForm.name.trim()) {
+      setBranchError('El nombre de la sucursal es obligatorio')
+      return
+    }
+    const payload: Partial<BranchPayload> = {
+      name: branchForm.name.trim(),
+      phone: branchForm.phone.trim() || null,
+      email: branchForm.email.trim() || null,
+      address: branchForm.address.trim() || null,
+      contactPerson: branchForm.contactPerson.trim() || null,
+      isBillingAddress: branchForm.isBillingAddress,
+      isDeliveryAddress: branchForm.isDeliveryAddress,
+    }
+    if (editingBranch) {
+      updateBranch(
+        { branchId: editingBranch.id, payload },
+        {
+          onSuccess: () => setBranchModalOpen(false),
+          onError: (err) =>
+            setBranchError(err instanceof Error ? err.message : 'Error al guardar la sucursal'),
+        },
+      )
+    } else if (customerId) {
+      createBranch(
+        { groupId: customerId, payload: payload as BranchPayload },
+        {
+          onSuccess: () => setBranchModalOpen(false),
+          onError: (err) =>
+            setBranchError(err instanceof Error ? err.message : 'Error al crear la sucursal'),
+        },
+      )
+    }
+  }
+
+  const handleBranchDelete = (b: Branch) => {
+    if (!window.confirm(`¿Desactivar la sucursal "${b.name}"? Podés reactivarla después.`)) return
+    deleteBranch(b.id)
+  }
 
   const deliveredOrders = useMemo(() => orders.filter((o) => o.orderStatus === 'delivered'), [orders])
   const totalDelivered = useMemo(
@@ -211,6 +317,12 @@ export function CustomerDetailPage() {
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900">{customer.name}</h1>
+              {isGroup && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                  <Building2 className="h-3.5 w-3.5" />
+                  Grupo / Franquicia
+                </span>
+              )}
               <span
                 className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
                   customer.isActive ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
@@ -275,6 +387,90 @@ export function CustomerDetailPage() {
         </div>
       </Card>
 
+      {/* Sucursales del grupo/franquicia */}
+      {isGroup && (
+        <div className="mt-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-spi-navy" />
+              <h2 className="text-lg font-semibold text-gray-900">Sucursales</h2>
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-white/10 dark:text-gray-300">
+                {branches.length}
+              </span>
+            </div>
+            <Button type="button" size="sm" onClick={openBranchCreate}>
+              <Plus className="h-4 w-4" />
+              Nueva sucursal
+            </Button>
+          </div>
+          <p className="text-sm text-gray-500 mb-3">
+            Cada sucursal tiene su propio contacto, dirección y flags de facturación/entrega. Las
+            órdenes pueden facturarse a una sucursal puntual o al grupo consolidado.
+          </p>
+
+          <Card>
+            {loadingBranches ? (
+              <LoadingState />
+            ) : branches.length === 0 ? (
+              <EmptyState
+                icon={Building2}
+                title="Sin sucursales"
+                description="Agregá la primera sucursal de este grupo o franquicia."
+                action={{ label: 'Nueva sucursal', onClick: openBranchCreate }}
+              />
+            ) : (
+              <div className="divide-y divide-spi-border">
+                {branches.map((b) => (
+                  <div key={b.id} className="flex items-start justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium text-gray-900">{b.name}</p>
+                        {!b.isActive && (
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-white/10">
+                            Inactiva
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                        {b.contactPerson && <span>Contacto: {b.contactPerson}</span>}
+                        {b.phone && <span>{b.phone}</span>}
+                        {b.email && <span>{b.email}</span>}
+                        {b.address && <span>{b.address}</span>}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {b.isBillingAddress && (
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
+                            Facturación
+                          </span>
+                        )}
+                        {b.isDeliveryAddress && (
+                          <span className="rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-500/20 dark:text-green-300">
+                            Entrega
+                          </span>
+                        )}
+                        {!b.isBillingAddress && !b.isDeliveryAddress && (
+                          <span className="text-[11px] text-gray-400">Sin flags de dirección</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => openBranchEdit(b)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                        Editar
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => handleBranchDelete(b)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Desactivar
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
       {/* Selector de período del historial */}
       <div className="mt-6 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
@@ -322,7 +518,8 @@ export function CustomerDetailPage() {
                 <tr className="border-b border-spi-border text-left text-xs uppercase tracking-wider text-gray-500">
                   <th className="px-4 py-3">Nº</th>
                   <th className="px-4 py-3">Fecha</th>
-                  <th className="px-4 py-3">Vendedor</th>
+                  <th className="px-4 py-3">operador</th>
+                  <th className="px-4 py-3">Sucursal</th>
                   <th className="px-4 py-3">Estado</th>
                   <th className="px-4 py-3 text-right">Monto</th>
                 </tr>
@@ -337,6 +534,16 @@ export function CustomerDetailPage() {
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{o.orderNumber}</td>
                     <td className="px-4 py-3 text-gray-700">{formatDate(o.createdAt)}</td>
                     <td className="px-4 py-3 text-gray-700">{o.seller?.name ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      {o.branch ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                          <Building2 className="h-3 w-3 text-gray-400" />
+                          {o.branch.name}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -444,7 +651,7 @@ export function CustomerDetailPage() {
                     </div>
                     <p className="mt-0.5 text-xs text-gray-400">
                       Entregado {o.entregadoEn ? formatDate(o.entregadoEn) : '—'} · {o.metodoPago ?? '—'} ·{' '}
-                      {o.vendedor ?? '—'}
+                      {o.operador ?? '—'}
                     </p>
                     {o.items.length > 0 && (
                       <ul className="mt-2 divide-y divide-spi-border">
@@ -467,6 +674,93 @@ export function CustomerDetailPage() {
           )}
         </Card>
       </div>
+
+      {/* Modal de sucursal */}
+      <Modal
+        isOpen={branchModalOpen}
+        onClose={() => setBranchModalOpen(false)}
+        title={editingBranch ? 'Editar sucursal' : 'Nueva sucursal'}
+        size="md"
+        zIndex={90}
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setBranchModalOpen(false)}
+              disabled={branchSaving}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleBranchSubmit} loading={branchSaving}>
+              {editingBranch ? 'Guardar cambios' : 'Crear sucursal'}
+            </Button>
+          </>
+        }
+      >
+        {branchError && (
+          <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600">
+            {branchError}
+          </div>
+        )}
+        <div className="space-y-4">
+          <Input
+            label="Nombre de la sucursal *"
+            value={branchForm.name}
+            onChange={(e) => setBranchForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Ej: Sucursal Centro"
+            required
+            autoFocus
+          />
+          <Input
+            label="Persona de contacto"
+            value={branchForm.contactPerson}
+            onChange={(e) => setBranchForm((f) => ({ ...f, contactPerson: e.target.value }))}
+            placeholder="Encargado, gerente de la sucursal..."
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Teléfono"
+              value={branchForm.phone}
+              onChange={(e) => setBranchForm((f) => ({ ...f, phone: e.target.value }))}
+              placeholder="+58 412 1234567"
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={branchForm.email}
+              onChange={(e) => setBranchForm((f) => ({ ...f, email: e.target.value }))}
+              placeholder="sucursal@mail.com"
+            />
+          </div>
+          <Input
+            label="Dirección"
+            value={branchForm.address}
+            onChange={(e) => setBranchForm((f) => ({ ...f, address: e.target.value }))}
+            placeholder="Dirección de la sucursal"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <label className="flex cursor-pointer items-center justify-between rounded-lg border border-spi-border bg-surface px-3 py-2.5">
+              <span className="text-sm font-medium text-gray-900">Dirección de facturación</span>
+              <input
+                type="checkbox"
+                checked={branchForm.isBillingAddress}
+                onChange={(e) => setBranchForm((f) => ({ ...f, isBillingAddress: e.target.checked }))}
+                className="h-4 w-4 accent-spi-text"
+              />
+            </label>
+            <label className="flex cursor-pointer items-center justify-between rounded-lg border border-spi-border bg-surface px-3 py-2.5">
+              <span className="text-sm font-medium text-gray-900">Dirección de entrega</span>
+              <input
+                type="checkbox"
+                checked={branchForm.isDeliveryAddress}
+                onChange={(e) => setBranchForm((f) => ({ ...f, isDeliveryAddress: e.target.checked }))}
+                className="h-4 w-4 accent-spi-text"
+              />
+            </label>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

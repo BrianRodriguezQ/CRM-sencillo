@@ -31,7 +31,7 @@ function TestLogin() {
     loading,
     isStaff,
     isSuperadmin,
-    isVendedor,
+    isoperador,
     isConductor,
     login,
     logout,
@@ -47,7 +47,7 @@ function TestLogin() {
       <span data-testid="token">{token ? 'tiene-token' : 'no-token'}</span>
       <span data-testid="isStaff">{isStaff ? 'staff' : 'no-staff'}</span>
       <span data-testid="isSuperadmin">{isSuperadmin ? 'superadmin' : 'no-superadmin'}</span>
-      <span data-testid="isVendedor">{isVendedor ? 'vendedor' : 'no-vendedor'}</span>
+      <span data-testid="isoperador">{isoperador ? 'operador' : 'no-operador'}</span>
       <span data-testid="isConductor">{isConductor ? 'conductor' : 'no-conductor'}</span>
       <span data-testid="challenge">
         {requires2FA ? `challenge:${challengeKind}` : 'sin-challenge'}
@@ -69,7 +69,7 @@ const mockUser = {
   createdAt: '2026-01-01',
 }
 
-const mockVendedor = { ...mockUser, id: 2, email: 'vendedor@nameemp.com', role: 'vendedor' }
+const mockoperador = { ...mockUser, id: 2, email: 'operador@nameemp.com', role: 'operador' }
 const mockConductor = { ...mockUser, id: 3, email: 'conductor@nameemp.com', role: 'conductor' }
 
 const mockLoginResponse = (overrides: Record<string, unknown> = {}) => ({
@@ -127,9 +127,9 @@ describe('AuthContext', () => {
     })
   })
 
-  it('flags de rol reflejan vendedor y conductor', async () => {
+  it('flags de rol reflejan operador y conductor', async () => {
     vi.mocked(api.post)
-      .mockResolvedValueOnce(mockLoginResponse({ user: mockVendedor }))
+      .mockResolvedValueOnce(mockLoginResponse({ user: mockoperador }))
       .mockResolvedValueOnce(mockLoginResponse({ user: mockConductor }))
 
     render(
@@ -144,9 +144,9 @@ describe('AuthContext', () => {
 
     fireEvent.click(screen.getByText('login'))
     await waitFor(() => {
-      expect(screen.getByTestId('user').textContent).toBe('vendedor@nameemp.com')
+      expect(screen.getByTestId('user').textContent).toBe('operador@nameemp.com')
     })
-    expect(screen.getByTestId('isVendedor').textContent).toBe('vendedor')
+    expect(screen.getByTestId('isoperador').textContent).toBe('operador')
     expect(screen.getByTestId('isSuperadmin').textContent).toBe('no-superadmin')
 
     fireEvent.click(screen.getByText('logout'))

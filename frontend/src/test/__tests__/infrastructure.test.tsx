@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { renderWithProviders, screen, waitFor } from '../test-utils'
 import {
   createMockUser,
-  createMockVendedor,
+  createMockoperador,
   createMockConductor,
   createLoginResponse,
 } from '../mocks/factories'
@@ -53,9 +53,9 @@ describe('Test infrastructure smoke test', () => {
     expect(user.email).toBe('superadmin@nameemp.com')
   })
 
-  it('createMockVendedor builds a seller user', () => {
-    const vendedor = createMockVendedor()
-    expect(vendedor.role).toBe('vendedor')
+  it('createMockoperador builds a seller user', () => {
+    const operador = createMockoperador()
+    expect(operador.role).toBe('operador')
   })
 
   it('createMockConductor builds a driver user', () => {

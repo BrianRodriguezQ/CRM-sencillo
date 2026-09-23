@@ -324,8 +324,8 @@ function UserMenu() {
   const roleLabel =
     user?.role === 'superadmin'
       ? 'Superadmin'
-      : user?.role === 'vendedor'
-        ? 'Vendedor'
+      : user?.role === 'operador'
+        ? 'operador'
         : 'Conductor'
 
   return (

@@ -71,6 +71,20 @@
       "when": 1789778000000,
       "tag": "0009_communications_attachment",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790000000000,
+      "tag": "0010_roles_branches_paymentpending",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790001000000,
+      "tag": "0011_branch_fields",
+      "breakpoints": true
     }
   ]
 }

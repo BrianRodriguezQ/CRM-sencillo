@@ -1,13 +1,14 @@
 /**
- * Datos de ejemplo del CRM Batista.
+ * Datos de ejemplo del L&L System CRM.
  *
  * Usado tanto por `npm run db:seed` (scripts/bulk) como por la ruta
  * POST /api/seed-dev (solo dev). Idempotente: si un email ya existe,
  * lo salta. Deja la base con:
  *   - 1 superadmin  (demo@nameemp.com / Demo1234!)
- *   - 2 vendedores
+ *   - 2 operadores
+ *   - 1 cobranza
  *   - 3 conductores
- *   - 5 clientes
+ *   - 5 clientes (algunos con sucursales)
  *   - 5 métodos de pago (efectivo, transferencia, tarjeta, pago móvil, zelle)
  *     con sus reglas de comprobante (requires_reference / requires_receipt)
  */
@@ -20,9 +21,13 @@ const SEED_PASSWORD = 'Demo1234!'
 
 const SEED_ADMIN = { name: 'Superadmin Demo', email: 'demo@nameemp.com' }
 
-const SEED_SELLERS = [
-  { name: 'Vendedor Uno', email: 'vendedor1@nameemp.com' },
-  { name: 'Vendedora Dos', email: 'vendedor2@nameemp.com' },
+const SEED_OPERADORES = [
+  { name: 'Operador Uno', email: 'operador1@nameemp.com' },
+  { name: 'Operadora Dos', email: 'operador2@nameemp.com' },
+]
+
+const SEED_COBRANZA = [
+  { name: 'Cobranza Principal', email: 'cobranza@nameemp.com' },
 ]
 
 const SEED_DRIVERS = [
@@ -31,36 +36,119 @@ const SEED_DRIVERS = [
   { name: 'Conductor Tres', email: 'conductor3@nameemp.com' },
 ]
 
+// Clientes: algunos son grupos/franquicias con sucursales (branches)
 const SEED_CUSTOMERS = [
+  // Grupo/Franquicia con sucursales
   {
-    name: 'Cliente Uno',
-    phone: '+58 412 000 0001',
-    email: 'cliente1@example.com',
-    address: 'Av. Principal, Caracas',
+    name: 'Franquicia Café Central',
+    rif: 'J-123456789',
+    phone: '+58 412 111 1111',
+    email: 'cafecentral@example.com',
+    address: 'Av. Principal, Caracas (Casa Matriz)',
+    notes: 'Grupo con 3 sucursales en Caracas',
+    isGroup: true,
+    isActive: true,
+    branches: [
+      {
+        name: 'Sucursal Centro',
+        rif: 'J-123456789-1',
+        phone: '+58 412 111 1112',
+        email: 'centro@cafecentral.com',
+        address: 'Av. Urdaneta, Caracas',
+        contactPerson: 'María González',
+        isBillingAddress: true,
+        isDeliveryAddress: true,
+        isActive: true,
+      },
+      {
+        name: 'Sucursal Chacao',
+        rif: 'J-123456789-2',
+        phone: '+58 412 111 1113',
+        email: 'chacao@cafecentral.com',
+        address: 'Av. Francisco de Miranda, Chacao',
+        contactPerson: 'Carlos Ruiz',
+        isBillingAddress: false,
+        isDeliveryAddress: true,
+        isActive: true,
+      },
+      {
+        name: 'Sucursal Las Mercedes',
+        rif: 'J-123456789-3',
+        phone: '+58 412 111 1114',
+        email: 'lasmercedes@cafecentral.com',
+        address: 'Av. Las Mercedes, Baruta',
+        contactPerson: 'Ana Torres',
+        isBillingAddress: false,
+        isDeliveryAddress: true,
+        isActive: true,
+      },
+    ],
   },
+  // Grupo/Franquicia con sucursales
   {
-    name: 'Cliente Dos',
-    phone: '+58 414 000 0002',
-    email: 'cliente2@example.com',
-    address: 'Calle Central, Maracaibo',
+    name: 'Restaurantes El Fogón',
+    rif: 'J-987654321',
+    phone: '+58 414 222 2222',
+    email: 'elfogon@example.com',
+    address: 'Calle Central, Maracaibo (Casa Matriz)',
+    notes: 'Cadena de restaurantes en Zulia',
+    isGroup: true,
+    isActive: true,
+    branches: [
+      {
+        name: 'Sucursal Maracaibo Centro',
+        rif: 'J-987654321-1',
+        phone: '+58 414 222 2223',
+        email: 'centro@elfogon.com',
+        address: 'Av. 5 de Julio, Maracaibo',
+        contactPerson: 'Juan Pérez',
+        isBillingAddress: true,
+        isDeliveryAddress: true,
+        isActive: true,
+      },
+      {
+        name: 'Sucursal San Francisco',
+        rif: 'J-987654321-2',
+        phone: '+58 414 222 2224',
+        email: 'sanfrancisco@elfogon.com',
+        address: 'Av. Universidad, San Francisco',
+        contactPerson: 'Laura Vargas',
+        isBillingAddress: false,
+        isDeliveryAddress: true,
+        isActive: true,
+      },
+    ],
   },
+  // Clientes individuales (sin sucursales)
   {
-    name: 'Cliente Tres',
-    phone: '+58 424 000 0003',
-    email: 'cliente3@example.com',
+    name: 'Distribuidora La Ceiba',
+    rif: 'J-111222333',
+    phone: '+58 424 333 3333',
+    email: 'laceiba@example.com',
     address: 'Av. Libertador, Valencia',
+    notes: 'Cliente individual sin sucursales',
+    isGroup: false,
+    isActive: true,
   },
   {
-    name: 'Cliente Cuatro',
-    phone: '+58 412 000 0004',
-    email: 'cliente4@example.com',
+    name: 'Comercial Los Andes',
+    rif: 'J-444555666',
+    phone: '+58 412 444 4444',
+    email: 'losandes@example.com',
     address: 'Calle Real, Barquisimeto',
+    notes: 'Cliente individual sin sucursales',
+    isGroup: false,
+    isActive: true,
   },
   {
-    name: 'Cliente Cinco',
-    phone: '+58 416 000 0005',
-    email: 'cliente5@example.com',
+    name: 'Inversiones Mérida',
+    rif: 'J-777888999',
+    phone: '+58 416 555 5555',
+    email: 'merida@example.com',
     address: 'Av. Bolívar, Mérida',
+    notes: 'Cliente individual sin sucursales',
+    isGroup: false,
+    isActive: true,
   },
 ]
 
@@ -104,9 +192,11 @@ const SEED_METHODS = [
 
 export interface SeedResult {
   admin: 'created' | 'exists'
-  sellers: number
+  operadores: number
+  cobranza: number
   drivers: number
   customers: number
+  branches: number
   paymentMethods: number
 }
 
@@ -147,10 +237,16 @@ async function countRows(table: typeof customers): Promise<number> {
 export async function seedDemoData(): Promise<SeedResult> {
   const admin = await ensureUser({ ...SEED_ADMIN, role: 'superadmin' })
 
-  let sellers = 0
-  for (const s of SEED_SELLERS) {
-    const r = await ensureUser({ ...s, role: 'vendedor' })
-    if (r === 'created') sellers++
+  let operadores = 0
+  for (const s of SEED_OPERADORES) {
+    const r = await ensureUser({ ...s, role: 'operador' })
+    if (r === 'created') operadores++
+  }
+
+  let cobranza = 0
+  for (const c of SEED_COBRANZA) {
+    const r = await ensureUser({ ...c, role: 'cobranza' })
+    if (r === 'created') cobranza++
   }
 
   let drivers = 0
@@ -160,13 +256,27 @@ export async function seedDemoData(): Promise<SeedResult> {
   }
 
   let customerCount = 0
+  let branchCount = 0
   if ((await countRows(customers)) === 0) {
     for (const c of SEED_CUSTOMERS) {
-      await db.insert(customers).values({
-        ...c,
+      const { branches, ...customerData } = c
+      const [createdCustomer] = await db.insert(customers).values({
+        ...customerData,
         isActive: true,
-      })
+      }).returning({ id: customers.id })
       customerCount++
+
+      if (branches && branches.length > 0) {
+        for (const branch of branches) {
+          await db.insert(customers).values({
+            ...branch,
+            isGroup: false,
+            parentId: createdCustomer.id,
+            isActive: true,
+          })
+          branchCount++
+        }
+      }
     }
   }
 
@@ -182,5 +292,5 @@ export async function seedDemoData(): Promise<SeedResult> {
     methods++
   }
 
-  return { admin, sellers, drivers, customers: customerCount, paymentMethods: methods }
+  return { admin, operadores, cobranza, drivers, customers: customerCount, branches: branchCount, paymentMethods: methods }
 }

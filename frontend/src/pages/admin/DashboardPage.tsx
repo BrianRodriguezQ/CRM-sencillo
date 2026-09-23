@@ -77,7 +77,7 @@ export function DashboardPage() {
 
   // ─── Quinto card según rol ───
   let extraStatCards: StatCard[] = []
-  if (user?.role === 'vendedor') {
+  if (user?.role === 'operador') {
     extraStatCards = [{
       label: 'Sin asignar',
       value: String((data as SellerDashboardStats | undefined)?.unassigned ?? 0),
@@ -193,12 +193,12 @@ export function DashboardPage() {
         />
       )}
 
-      {/* ─── Vendedor: Top clientes + Órdenes recientes ─── */}
-      {user?.role === 'vendedor' && (
+      {/* ─── operador: Top clientes + Órdenes recientes ─── */}
+      {user?.role === 'operador' && (
         <SellerSummary data={data as SellerDashboardStats | undefined} recentOrders={recentOrders} />
       )}
 
-      {/* ─── Superadmin: Equipo + Top vendedores/conductores ─── */}
+      {/* ─── Superadmin: Equipo + Top operadores/conductores ─── */}
       {user?.role === 'superadmin' && (
         <SuperadminSummary data={data as SuperadminDashboardStats | undefined} />
       )}
@@ -348,7 +348,7 @@ function SuperadminSummary({ data }: { data: SuperadminDashboardStats | undefine
           <h2 className="text-lg font-semibold text-gray-900">Equipo</h2>
         </div>
         <div className="grid grid-cols-3 gap-4">
-          <StatMini label="Vendedores" value={String(data?.activeSellers ?? 0)} />
+          <StatMini label="operadores" value={String(data?.activeSellers ?? 0)} />
           <StatMini label="Conductores" value={String(data?.activeDrivers ?? 0)} />
           <StatMini label="Clientes" value={String(data?.totalCustomers ?? 0)} />
         </div>
@@ -360,7 +360,7 @@ function SuperadminSummary({ data }: { data: SuperadminDashboardStats | undefine
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
               <Users className="h-5 w-5" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900">Top vendedores (ganancia)</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Top operadores (ganancia)</h2>
           </div>
           {topSellers.length === 0 ? (
             <p className="py-6 text-center text-sm text-gray-400">Sin ventas todavía.</p>

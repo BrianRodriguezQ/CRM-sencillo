@@ -1,9 +1,11 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Package, Search, X, Plus, Trash2, UserPlus, Zap, Eye, Users, Pencil } from 'lucide-react'
+import { Package, Search, X, Plus, Trash2, UserPlus, Zap, Eye, Users, Pencil, Building2 } from 'lucide-react'
 import { useCreateOrder } from '../../hooks/queries/useOrders'
 import {
   useCustomersList,
+  useCustomerGroups,
+  useBranches,
   useCreateCustomer,
   type Customer,
 } from '../../hooks/queries/useCustomers'
@@ -36,6 +38,8 @@ export function NewOrderPage() {
   // deselecciona con «Quitar», que devuelve el formulario a la búsqueda.
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [customerQuery, setCustomerQuery] = useState('')
+  // Sucursal seleccionada (solo si el cliente es grupo/franquicia)
+  const [selectedBranchId, setSelectedBranchId] = useState<number | ''>('')
   const [autoAssign, setAutoAssign] = useState(true)
   const [driverId, setDriverId] = useState<number | ''>('')
   const [paymentMethodId, setPaymentMethodId] = useState<number | ''>('')
@@ -68,6 +72,15 @@ export function NewOrderPage() {
   const activePayments = (paymentMethods ?? []).filter((p) => p.isActive)
 
   const customerOptions = customersData?.items ?? []
+
+  // Sucursales del grupo seleccionado (para facturar a una sucursal puntual).
+  const isGroupCustomer = Boolean(selectedCustomer?.isGroup)
+  const { data: branches = [] } = useBranches(isGroupCustomer ? (selectedCustomer?.id ?? null) : null)
+
+  // Si el cliente deja de ser grupo o cambia, resetear la sucursal.
+  useEffect(() => {
+    if (!isGroupCustomer) setSelectedBranchId('')
+  }, [isGroupCustomer, selectedCustomer?.id])
 
   // Si vino ?cliente=5, mostramos el nombre una vez que cargan los clientes.
   useEffect(() => {
@@ -172,6 +185,8 @@ export function NewOrderPage() {
 
     return {
       customerId: selectedCustomer.id,
+      // Sucursal puntual del grupo (si el cliente es franquicia y eligió una).
+      branchId: selectedBranchId === '' ? null : selectedBranchId,
       paymentMethodId,
       autoAssignDriver: autoAssign,
       driverId: autoAssign ? null : driverId === '' ? null : driverId,
@@ -315,6 +330,36 @@ export function NewOrderPage() {
             </>
           )}
         </div>
+
+        {/* Sucursal — solo si el cliente es grupo/franquicia */}
+        {selectedCustomer?.isGroup && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-700">
+              Sucursal de facturación
+            </label>
+            <p className="text-xs text-gray-400 mb-1.5">
+              Elegí una sucursal puntual o dejá «Grupo (consolidado)» para facturar a toda la
+              franquicia.
+            </p>
+            <select
+              value={selectedBranchId}
+              onChange={(e) =>
+                setSelectedBranchId(e.target.value === '' ? '' : parseInt(e.target.value))
+              }
+              className="w-full rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20"
+            >
+              <option value="">Grupo (consolidado)</option>
+              {branches
+                .filter((b) => b.isActive)
+                .map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                    {b.isBillingAddress ? ' · facturación' : ''}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
 
         {/* Productos */}
         <div>
@@ -566,6 +611,14 @@ export function NewOrderPage() {
                 </p>
                 {selectedCustomer?.address && (
                   <p className="text-sm text-gray-500">{selectedCustomer.address}</p>
+                )}
+                {selectedCustomer?.isGroup && (
+                  <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                    <Building2 className="h-3 w-3" />
+                    {selectedBranchId
+                      ? branches.find((b) => b.id === selectedBranchId)?.name ?? 'Sucursal'
+                      : 'Grupo (consolidado)'}
+                  </p>
                 )}
               </div>
             </div>

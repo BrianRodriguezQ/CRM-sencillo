@@ -17,9 +17,9 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: () => ({
     user: {
       id: 7,
-      name: 'Vendedor Uno',
-      email: 'vendedor1@nameemp.com',
-      role: 'vendedor',
+      name: 'operador Uno',
+      email: 'operador1@nameemp.com',
+      role: 'operador',
       isActive: true,
       mustChangePassword: false,
     },

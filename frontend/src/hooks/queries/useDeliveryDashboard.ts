@@ -6,7 +6,7 @@ import type { Order } from './useOrders'
 /**
  * Dashboard v2 (CTO 2026-09): cada rol ve SOLO lo suyo.
  *   - superadmin: totales de la empresa + rankings (detalle individual → /admin/equipo/:id).
- *   - vendedor:  sus pedidos + sus ingresos cobrados + pendientes sin asignar.
+ *   - operador:  sus pedidos + sus ingresos cobrados + pendientes sin asignar.
  *   - conductor: su trabajo + ganancia de entregadas.
  */
 export interface DashboardTotals {
@@ -53,11 +53,11 @@ export interface SuperadminDashboardStats {
 
 /** Estadísticas de UN miembro del equipo (GET /dashboard/user/:id — decisión 3-B). */
 export interface MemberDashboardStats {
-  user: { id: number; name: string; role: 'vendedor' | 'conductor' }
+  user: { id: number; name: string; role: 'operador' | 'conductor' }
   totals: DashboardTotals
-  /** Vendedor: pedidos sin conductor. Conductor: 0. */
+  /** operador: pedidos sin conductor. Conductor: 0. */
   unassigned: number
-  /** Conductor: entregadas. Vendedor: 0. */
+  /** Conductor: entregadas. operador: 0. */
   delivered: number
   topCustomers: Array<{ id: number; name: string; totalOrders: number; totalAmount: string }>
   recentOrders: Order[]
@@ -70,7 +70,7 @@ export function useDeliveryDashboard(role: UserRole | undefined) {
       const url =
         role === 'superadmin'
           ? '/dashboard'
-          : role === 'vendedor'
+          : role === 'operador'
             ? '/dashboard/seller'
             : '/dashboard/driver'
       const res = await api.get<unknown>(url)
@@ -81,7 +81,7 @@ export function useDeliveryDashboard(role: UserRole | undefined) {
   })
 }
 
-/** Detalle de rendimiento de un vendedor/conductor (solo consume el superadmin). */
+/** Detalle de rendimiento de un operador/conductor (solo consume el superadmin). */
 export function useTeamMemberDashboard(userId: number | null) {
   return useQuery({
     queryKey: ['team-member-dashboard', userId],

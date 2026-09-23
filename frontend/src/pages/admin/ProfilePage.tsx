@@ -17,7 +17,7 @@ import { formatDate } from '../../lib/dates'
 
 const ROLE_LABELS: Record<string, string> = {
   superadmin: 'Superadmin',
-  vendedor: 'Vendedor',
+  operador: 'operador',
   conductor: 'Conductor',
 }
 

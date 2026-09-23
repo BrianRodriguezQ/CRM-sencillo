@@ -52,6 +52,7 @@ router.use('*', authMiddleware)
 const sellerAlias = alias(users, 'seller')
 const driverAlias = alias(users, 'driver')
 const recorderAlias = alias(users, 'recorder')
+const branchAlias = alias(customers, 'branch')
 
 const ORDER_STATUSES = ['created', 'accepted', 'in_transit', 'delivered', 'cancelled'] as const
 type OrderStatus = (typeof ORDER_STATUSES)[number]
@@ -91,7 +92,8 @@ function toNumber(v: unknown): number {
 /** Filtro de scope según el rol (superadmin = sin restricción). */
 function ordersScope(user: JWTPayload): SQL[] {
   if (user.role === 'superadmin') return []
-  if (user.role === 'vendedor') return [eq(orders.sellerId, user.id)]
+  if (user.role === 'operador') return [eq(orders.sellerId, user.id)]
+  if (user.role === 'cobranza') return [] // cobranza ve todas para gestión de cobros
   return [eq(orders.driverId, user.id)]
 }
 
@@ -101,7 +103,8 @@ function canAccessOrder(
   order: { sellerId: number; driverId: number | null },
 ): boolean {
   if (user.role === 'superadmin') return true
-  if (user.role === 'vendedor') return order.sellerId === user.id
+  if (user.role === 'operador') return order.sellerId === user.id
+  if (user.role === 'cobranza') return true // cobranza ve todas para gestión de cobros
   return order.driverId === user.id
 }
 
@@ -171,7 +174,7 @@ async function loadOrderDetail(id: number) {
   const order = await loadOrderRaw(id)
   if (!order) return null
 
-  const [customer, seller, paymentMethod] = await Promise.all([
+  const [customer, seller, paymentMethod, branch] = await Promise.all([
     db
       .select({
         id: customers.id,
@@ -201,6 +204,14 @@ async function loadOrderDetail(id: number) {
       .where(eq(paymentMethods.id, order.paymentMethodId))
       .limit(1)
       .then((r) => r[0] ?? null),
+    order.branchId
+      ? db
+          .select({ id: customers.id, name: customers.name, address: customers.address })
+          .from(customers)
+          .where(eq(customers.id, order.branchId))
+          .limit(1)
+          .then((r) => r[0] ?? null)
+      : Promise.resolve(null),
   ])
 
   let driver: { id: number; name: string; phone: string | null } | null = null
@@ -292,7 +303,13 @@ async function loadOrderDetail(id: number) {
     deliveredAt: order.deliveredAt,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
+    customerId: order.customerId,
     customer,
+    // Sucursal (branch) si la orden se facturó a una sucursal del grupo.
+    branchId: order.branchId,
+    branch,
+    // "Dejar pago pendiente" (el conductor no cobra; lo gestiona cobranza).
+    paymentPending: order.paymentPending,
     seller,
     driver,
     paymentMethod,
@@ -467,6 +484,10 @@ router.get('/', zValidator('query', listQuerySchema), async (c) => {
         updatedAt: orders.updatedAt,
         customerId: orders.customerId,
         customer: { id: customers.id, name: customers.name },
+        // Sucursal específica de un grupo/franquicia (null = orden del grupo consolidado)
+        branchId: orders.branchId,
+        branchName: branchAlias.name,
+        paymentPending: orders.paymentPending,
         sellerId: orders.sellerId,
         seller: { id: sellerAlias.id, name: sellerAlias.name },
         driverId: orders.driverId,
@@ -484,6 +505,7 @@ router.get('/', zValidator('query', listQuerySchema), async (c) => {
       .innerJoin(sellerAlias, eq(sellerAlias.id, orders.sellerId))
       .leftJoin(driverAlias, eq(driverAlias.id, orders.driverId))
       .innerJoin(paymentMethods, eq(paymentMethods.id, orders.paymentMethodId))
+      .leftJoin(branchAlias, eq(branchAlias.id, orders.branchId))
       .where(where)
       .orderBy(desc(orders.createdAt))
       .limit(q.perPage)
@@ -499,6 +521,7 @@ router.get('/', zValidator('query', listQuerySchema), async (c) => {
       items: rows.map((r) => ({
         ...r,
         amount: toNumber(r.amount),
+        branch: r.branchId ? { id: r.branchId, name: r.branchName } : null,
         driver: r.driverId ? r.driver : null,
         seller: r.seller ?? null,
         customer: r.customer ?? null,
@@ -522,9 +545,14 @@ const orderItemSchema = z.object({
 
 const createOrderSchema = z.object({
   customerId: z.coerce.number().int().positive(),
+  // Sucursal específica (branch) — opcional; si el cliente es grupo, permite
+  // facturar individualmente a una sucursal
+  branchId: z.coerce.number().int().positive().optional().nullable(),
   paymentMethodId: z.coerce.number().int().positive(),
   amount: z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
   paymentStatus: z.enum(['pending', 'paid']).optional().default('pending'),
+  // "Dejar pago pendiente": conductor NO cobra; cobranza lo gestiona luego
+  paymentPending: z.boolean().optional().default(false),
   deliveryAddress: z.string().trim().optional().nullable(),
   notes: z.string().trim().optional().nullable(),
   driverId: z.coerce.number().int().positive().optional().nullable(),
@@ -534,7 +562,7 @@ const createOrderSchema = z.object({
 
 router.post(
   '/',
-  requireRole('superadmin', 'vendedor'),
+  requireRole('superadmin', 'operador'),
   zValidator('json', createOrderSchema),
   async (c) => {
     const auth = c.get('user')
@@ -554,12 +582,33 @@ router.post(
       }
 
       const [customer] = await db
-        .select({ id: customers.id })
+        .select({ id: customers.id, isGroup: customers.isGroup })
         .from(customers)
         .where(and(eq(customers.id, data.customerId), eq(customers.isActive, true)))
         .limit(1)
       if (!customer) {
         return c.json({ success: false, error: 'Cliente no encontrado' }, 400)
+      }
+
+      // Si viene branchId: validar que sea una sucursal activa DEL MISMO cliente.
+      // branchId solo tiene sentido cuando el cliente es grupo/franquicia.
+      let branchId: number | null = null
+      if (data.branchId) {
+        const [branch] = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(
+            and(
+              eq(customers.id, data.branchId),
+              eq(customers.parentId, data.customerId),
+              eq(customers.isActive, true),
+            ),
+          )
+          .limit(1)
+        if (!branch) {
+          return c.json({ success: false, error: 'Sucursal no encontrada para este cliente' }, 400)
+        }
+        branchId = branch.id
       }
 
       const [method] = await db
@@ -611,10 +660,12 @@ router.post(
           .values({
             orderNumber,
             customerId: data.customerId,
+            branchId,
             sellerId: auth.id,
             paymentMethodId: data.paymentMethodId,
             amount: finalAmount.toFixed(2),
             paymentStatus: 'pending',
+            paymentPending: data.paymentPending ?? false,
             deliveryAddress: data.deliveryAddress ?? null,
             notes: data.notes ?? null,
           })
@@ -692,7 +743,7 @@ const updateOrderSchema = z.object({
 
 router.patch(
   '/:id',
-  requireRole('superadmin', 'vendedor'),
+  requireRole('superadmin', 'operador'),
   zValidator('json', updateOrderSchema),
   async (c) => {
     const auth = c.get('user')
@@ -764,7 +815,7 @@ const assignDriverSchema = z.object({
 
 router.post(
   '/:id/assign-driver',
-  requireRole('superadmin', 'vendedor'),
+  requireRole('superadmin', 'operador'),
   zValidator('json', assignDriverSchema),
   async (c) => {
     const auth = c.get('user')
@@ -830,7 +881,7 @@ router.post(
 
 /* ─── POST /:id/assign-auto — asignar al conductor con MENOR carga ponderada ─── */
 
-router.post('/:id/assign-auto', requireRole('superadmin', 'vendedor'), async (c) => {
+router.post('/:id/assign-auto', requireRole('superadmin', 'operador'), async (c) => {
   const auth = c.get('user')
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) {
@@ -914,7 +965,7 @@ router.post('/:id/status', zValidator('json', statusSchema), async (c) => {
     const current = order.orderStatus as OrderStatus
 
     // El vendedor NO toca estados (CTO: solo el conductor; superadmin respaldo).
-    if (auth.role === 'vendedor') {
+    if (auth.role === 'operador') {
       return c.json(
         { success: false, error: 'El vendedor no puede cambiar el estado de la entrega' },
         403,

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Users, Plus, Pencil, Phone, Mail, MapPin, Eye } from 'lucide-react'
+import { Search, Users, Plus, Pencil, Phone, Mail, MapPin, Eye, Building2 } from 'lucide-react'
 import {
   useCustomersList,
+  useCustomerGroups,
   useCreateCustomer,
   useUpdateCustomer,
   type Customer,
@@ -16,10 +17,13 @@ import { EmptyState } from '../../components/ui/EmptyState'
 import { PrefixedNumberInput } from '../../components/ui/PrefixedNumberInput'
 import { LoadingState } from '../../components/ui/LoadingState'
 
-const EMPTY_FORM = { name: '', rif: '', phone: '', email: '', address: '', notes: '' }
+const EMPTY_FORM = { name: '', rif: '', phone: '', email: '', address: '', notes: '', isGroup: false }
+
+type Tab = 'clientes' | 'grupos'
 
 export function CustomersPage() {
   const navigate = useNavigate()
+  const [tab, setTab] = useState<Tab>('clientes')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
   const [search, setSearch] = useState('')
@@ -29,12 +33,18 @@ export function CustomersPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState('')
 
-  const { data, isLoading } = useCustomersList({
-    page,
-    perPage,
-    search,
-    ...(statusFilter ? { isActive: statusFilter === 'activo' } : {}),
-  })
+  const isGroupsTab = tab === 'grupos'
+
+  // En la pestaña Grupos usamos el endpoint /customers/groups (solo isGroup).
+  const listQuery = isGroupsTab
+    ? useCustomerGroups({ page, perPage, search })
+    : useCustomersList({
+        page,
+        perPage,
+        search,
+        ...(statusFilter ? { isActive: statusFilter === 'activo' } : {}),
+      })
+  const { data, isLoading } = listQuery
   const { mutate: createCustomer, isPending: creating } = useCreateCustomer()
   const { mutate: updateCustomer, isPending: updating } = useUpdateCustomer()
 
@@ -44,7 +54,7 @@ export function CustomersPage() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm(EMPTY_FORM)
+    setForm({ ...EMPTY_FORM, isGroup: isGroupsTab })
     setError('')
     setModalOpen(true)
   }
@@ -58,9 +68,17 @@ export function CustomersPage() {
       email: c.email ?? '',
       address: c.address ?? '',
       notes: c.notes ?? '',
+      isGroup: Boolean(c.isGroup),
     })
     setError('')
     setModalOpen(true)
+  }
+
+  const switchTab = (t: Tab) => {
+    setTab(t)
+    setPage(1)
+    setSearch('')
+    setStatusFilter('')
   }
 
   const handleSubmit = () => {
@@ -77,6 +95,7 @@ export function CustomersPage() {
       email: form.email.trim() || null,
       address: form.address.trim() || null,
       notes: form.notes.trim() || null,
+      isGroup: form.isGroup,
     }
 
     if (editing) {
@@ -105,12 +124,44 @@ export function CustomersPage() {
       <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
-          <p className="text-sm text-gray-500">A quién venden los vendedores.</p>
+          <p className="text-sm text-gray-500">
+            {isGroupsTab
+              ? 'Grupos y franquicias: clientes que agrupan varias sucursales.'
+              : 'A quién venden los operadores.'}
+          </p>
         </div>
         <Button type="button" onClick={openCreate}>
           <Plus className="h-4 w-4" />
-          Nuevo cliente
+          {isGroupsTab ? 'Nuevo grupo' : 'Nuevo cliente'}
         </Button>
+      </div>
+
+      {/* Tabs: Clientes / Grupos (franquicias) */}
+      <div className="mb-4 flex gap-1 rounded-xl border border-spi-border bg-surface p-1 w-fit">
+        <button
+          type="button"
+          onClick={() => switchTab('clientes')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            !isGroupsTab
+              ? 'bg-spi-text text-white'
+              : 'text-gray-600 hover:bg-gray-100 dark:hover:bg-white/5'
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          Clientes
+        </button>
+        <button
+          type="button"
+          onClick={() => switchTab('grupos')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            isGroupsTab
+              ? 'bg-spi-text text-white'
+              : 'text-gray-600 hover:bg-gray-100 dark:hover:bg-white/5'
+          }`}
+        >
+          <Building2 className="h-4 w-4" />
+          Grupos / Franquicias
+        </button>
       </div>
 
       <Card className="mb-4">
@@ -125,23 +176,29 @@ export function CustomersPage() {
                   setSearch(e.target.value)
                   setPage(1)
                 }}
-                placeholder="Buscar por nombre, teléfono, email o RIF..."
+                placeholder={
+                  isGroupsTab
+                    ? 'Buscar grupo o franquicia por nombre, RIF...'
+                    : 'Buscar por nombre, teléfono, email o RIF...'
+                }
                 className="w-full rounded-lg border border-spi-border bg-surface py-2 pl-9 pr-3 text-sm text-spi-text placeholder-gray-400 outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20"
               />
             </div>
-            <select
-              aria-label="Filtrar por estado"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as 'activo' | 'inactivo' | '')
-                setPage(1)
-              }}
-              className="rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20 cursor-pointer"
-            >
-              <option value="">Todos los estados</option>
-              <option value="activo">Activos</option>
-              <option value="inactivo">Inactivos</option>
-            </select>
+            {!isGroupsTab && (
+              <select
+                aria-label="Filtrar por estado"
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as 'activo' | 'inactivo' | '')
+                  setPage(1)
+                }}
+                className="rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20 cursor-pointer"
+              >
+                <option value="">Todos los estados</option>
+                <option value="activo">Activos</option>
+                <option value="inactivo">Inactivos</option>
+              </select>
+            )}
           </div>
         </div>
       </Card>
@@ -151,10 +208,14 @@ export function CustomersPage() {
           <LoadingState />
         ) : items.length === 0 ? (
           <EmptyState
-            icon={Users}
-            title="Sin clientes"
-            description="No hay clientes para los filtros seleccionados."
-            action={{ label: 'Crear el primero', onClick: openCreate }}
+            icon={isGroupsTab ? Building2 : Users}
+            title={isGroupsTab ? 'Sin grupos' : 'Sin clientes'}
+            description={
+              isGroupsTab
+                ? 'Todavía no hay grupos/franquicias. Creá uno para poder agregarle sucursales.'
+                : 'No hay clientes para los filtros seleccionados.'
+            }
+            action={{ label: isGroupsTab ? 'Crear el primero' : 'Crear el primero', onClick: openCreate }}
           />
         ) : (
           <div className="overflow-x-auto">
@@ -171,7 +232,15 @@ export function CustomersPage() {
                 {items.map((c) => (
                   <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-gray-900">{c.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-900">{c.name}</p>
+                        {c.isGroup && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                            <Building2 className="h-3 w-3" />
+                            Grupo
+                          </span>
+                        )}
+                      </div>
                       {c.rif && <p className="text-xs text-gray-400">{c.rif}</p>}
                       <p className="text-xs text-gray-400">{c.isActive ? 'Activo' : 'Inactivo'}</p>
                     </td>
@@ -205,7 +274,7 @@ export function CustomersPage() {
                         onClick={() => navigate(`/admin/clientes/${c.id}`)}
                       >
                         <Eye className="h-3.5 w-3.5" />
-                        Ver
+                        {c.isGroup ? 'Sucursales' : 'Ver'}
                       </Button>
                       <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(c)}>
                         <Pencil className="h-3.5 w-3.5" />
@@ -236,7 +305,7 @@ export function CustomersPage() {
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? 'Editar cliente' : 'Nuevo cliente'}
+        title={editing ? 'Editar cliente' : isGroupsTab ? 'Nuevo grupo' : 'Nuevo cliente'}
         size="md"
         zIndex={90}
         footer={
@@ -250,7 +319,7 @@ export function CustomersPage() {
               Cancelar
             </Button>
             <Button type="button" onClick={handleSubmit} loading={saving}>
-              {editing ? 'Guardar cambios' : 'Crear cliente'}
+              {editing ? 'Guardar cambios' : isGroupsTab ? 'Crear grupo' : 'Crear cliente'}
             </Button>
           </>
         }
@@ -261,11 +330,28 @@ export function CustomersPage() {
           </div>
         )}
         <div className="space-y-4">
+          {/* Toggle grupo/franquicia (visible al crear; en edición queda fijo) */}
+          {!editing && (
+            <label className="flex cursor-pointer items-center justify-between rounded-lg border border-spi-border bg-surface px-3 py-2.5">
+              <span className="flex flex-col">
+                <span className="text-sm font-medium text-gray-900">Es grupo / franquicia</span>
+                <span className="text-xs text-gray-500">
+                  Agrupa varias sucursales con datos propios de facturación y entrega.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={form.isGroup}
+                onChange={(e) => setForm((f) => ({ ...f, isGroup: e.target.checked }))}
+                className="h-4 w-4 accent-spi-text"
+              />
+            </label>
+          )}
           <Input
             label="Nombre *"
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            placeholder="Nombre y apellido"
+            placeholder={form.isGroup ? 'Ej: Grupo Los Andes C.A.' : 'Nombre y apellido'}
             required
             autoFocus
           />

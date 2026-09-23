@@ -20,8 +20,8 @@ describe('broadcaster SSE (WP1)', () => {
   it('entrega eventos a todas las pestañas de un usuario', () => {
     const a = makeSink()
     const b = makeSink()
-    const idA = onConnect(7, 'vendedor', a.write)
-    const idB = onConnect(7, 'vendedor', b.write)
+    const idA = onConnect(7, 'operador', a.write)
+    const idB = onConnect(7, 'operador', b.write)
 
     emitToUser(7, 'notification', { title: 'Hola' })
 
@@ -36,7 +36,7 @@ describe('broadcaster SSE (WP1)', () => {
   it('no entrega a otros usuarios', () => {
     const a = makeSink()
     const b = makeSink()
-    const idA = onConnect(7, 'vendedor', a.write)
+    const idA = onConnect(7, 'operador', a.write)
     const idB = onConnect(8, 'conductor', b.write)
 
     emitToUser(7, 'order_changed', { orderId: 1 })
@@ -52,7 +52,7 @@ describe('broadcaster SSE (WP1)', () => {
     const admin = makeSink()
     const seller = makeSink()
     const idAdmin = onConnect(1, 'superadmin', admin.write)
-    const idSeller = onConnect(2, 'vendedor', seller.write)
+    const idSeller = onConnect(2, 'operador', seller.write)
 
     emitToRole('superadmin', 'order_changed', { orderId: 5 })
 
@@ -66,7 +66,7 @@ describe('broadcaster SSE (WP1)', () => {
 
   it('onDisconnect elimina la conexión (deja de recibir)', () => {
     const a = makeSink()
-    const id = onConnect(9, 'vendedor', a.write)
+    const id = onConnect(9, 'operador', a.write)
     onDisconnect(9, id)
 
     emitToUser(9, 'notification', { title: 'nadie' })
@@ -77,7 +77,7 @@ describe('broadcaster SSE (WP1)', () => {
     const a = makeSink()
     const b = makeSink()
     const idA = onConnect(1, 'superadmin', a.write)
-    const idB = onConnect(2, 'vendedor', b.write)
+    const idB = onConnect(2, 'operador', b.write)
 
     expect(sseStats()).toEqual({ connections: 2, users: 2 })
 
@@ -90,7 +90,7 @@ describe('broadcaster SSE (WP1)', () => {
 
   it('no lanza si el write del stream falla (stream roto)', () => {
     const failing = { write: () => { throw new Error('stream cerrado') } }
-    const id = onConnect(3, 'vendedor', failing.write)
+    const id = onConnect(3, 'operador', failing.write)
 
     // No debe lanzar: safeWrite atrapa el error y el onAbort limpiará.
     expect(() => emitToUser(3, 'notification', { title: 'x' })).not.toThrow()

@@ -24,7 +24,7 @@ import {
 import { formatMoney } from '../../lib/utils'
 
 /**
- * Drill-down del superadmin (decisión 3-B): panel de UN vendedor o conductor.
+ * Drill-down del superadmin (decisión 3-B): panel de UN operador o conductor.
  * La data viene de GET /dashboard/user/:id — si el usuario es superadmin,
  * el backend responde 400 ("no se puede ver el panel de un superadmin").
  */
@@ -39,7 +39,7 @@ export function TeamMemberDetailPage() {
   const errorMsg =
     error instanceof Error
       ? error.message
-      : 'No se pudo cargar el panel del miembro. Verificá que sea un vendedor o conductor activo.'
+      : 'No se pudo cargar el panel del miembro. Verificá que sea un operador o conductor activo.'
 
   if (isLoading) {
     return (
@@ -71,8 +71,8 @@ export function TeamMemberDetailPage() {
   const totals = data.totals
   const isDriver = member.role === 'conductor'
   // Rutas agrupadas bajo Equipo (CTO 2026-09-18, decisión 1-B).
-  const backTo = isDriver ? '/admin/equipo/conductores' : '/admin/equipo/vendedores'
-  const backLabel = isDriver ? 'Volver a conductores' : 'Volver a vendedores'
+  const backTo = isDriver ? '/admin/equipo/conductores' : '/admin/equipo/operadores'
+  const backLabel = isDriver ? 'Volver a conductores' : 'Volver a operadores'
 
   const statSource: Array<{ label: string; value: string; tone: string }> = [
     {
@@ -120,8 +120,8 @@ export function TeamMemberDetailPage() {
               <div className="mt-1 flex items-center gap-2 flex-wrap">
                 <span className="inline-flex items-center gap-1 rounded-full bg-spi-gold/20 px-2.5 py-0.5 text-xs font-medium text-spi-gold">
                   {member.role === 'conductor' && <Truck className="h-3 w-3" />}
-                  {member.role === 'vendedor' && <Package className="h-3 w-3" />}
-                  {member.role === 'vendedor' ? 'Vendedor' : 'Conductor'}
+                  {member.role === 'operador' && <Package className="h-3 w-3" />}
+                  {member.role === 'operador' ? 'operador' : 'Conductor'}
                 </span>
                 {currentUser?.id === member.id && (
                   <span className="text-xs text-white/50">(sos vos)</span>
@@ -183,7 +183,7 @@ export function TeamMemberDetailPage() {
         </Card>
       </div>
 
-      {/* Top clientes (solo vendedor) */}
+      {/* Top clientes (solo operador) */}
       {!isDriver && (
         <Card className="mt-4">
           <h2 className="mb-3 text-lg font-semibold text-gray-900">Top clientes</h2>
