@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest'
 import { canAccessRoute, rolesForPath, isRouteDeclared } from '../routeAccess'
 import type { UserRole } from '../../context/AuthContext'
 
-const ROLES: UserRole[] = ['superadmin', 'operador', 'conductor']
+const ROLES: UserRole[] = ['superadmin', 'operador', 'conductor', 'cobranza']
 
 describe('routeAccess — rutas permitidas por rol', () => {
   it('superadmin accede a todo el panel', () => {
@@ -20,6 +20,7 @@ describe('routeAccess — rutas permitidas por rol', () => {
       '/admin/conductores',
       '/admin/equipo',
       '/admin/metodos-pago',
+      '/admin/cobranza',
       '/admin/notas-entrega',
       '/admin/perfil',
     ]
@@ -28,15 +29,31 @@ describe('routeAccess — rutas permitidas por rol', () => {
     }
   })
 
-  it('operador accede a las suyas y NO a las de gestión de usuarios', () => {
+  it('operador accede a las suyas y NO a las de gestión de usuarios ni cobranza', () => {
     expect(canAccessRoute('operador', '/admin')).toBe(true)
     expect(canAccessRoute('operador', '/admin/ordenes')).toBe(true)
     expect(canAccessRoute('operador', '/admin/clientes')).toBe(true)
-    expect(canAccessRoute('operador', '/admin/notas-entrega')).toBe(true)
 
     expect(canAccessRoute('operador', '/admin/equipo')).toBe(false)
     expect(canAccessRoute('operador', '/admin/conductores')).toBe(false)
     expect(canAccessRoute('operador', '/admin/metodos-pago')).toBe(false)
+    // Decisión de negocio: las notas de entrega se movieron a cobranza.
+    expect(canAccessRoute('operador', '/admin/notas-entrega')).toBe(false)
+    expect(canAccessRoute('operador', '/admin/cobranza')).toBe(false)
+  })
+
+  it('cobranza accede a su panel y notas de entrega, NO a gestión', () => {
+    // Landing: cobranza también aterriza en /admin tras el login.
+    expect(canAccessRoute('cobranza', '/admin')).toBe(true)
+    expect(canAccessRoute('cobranza', '/admin/cobranza')).toBe(true)
+    expect(canAccessRoute('cobranza', '/admin/notas-entrega')).toBe(true)
+    expect(canAccessRoute('cobranza', '/admin/perfil')).toBe(true)
+
+    expect(canAccessRoute('cobranza', '/admin/equipo')).toBe(false)
+    expect(canAccessRoute('cobranza', '/admin/conductores')).toBe(false)
+    expect(canAccessRoute('cobranza', '/admin/metodos-pago')).toBe(false)
+    expect(canAccessRoute('cobranza', '/admin/ordenes/nueva')).toBe(false)
+    expect(canAccessRoute('cobranza', '/admin/clientes')).toBe(false)
   })
 
   it('conductor solo accede a Panel / Órdenes / Mi Perfil', () => {
@@ -102,6 +119,7 @@ describe('routeAccess — invariantes', () => {
       '/admin/conductores',
       '/admin/equipo',
       '/admin/metodos-pago',
+      '/admin/cobranza',
       '/admin/notas-entrega',
       '/admin/perfil',
     ]

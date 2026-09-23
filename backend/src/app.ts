@@ -26,6 +26,7 @@ import ordersRoutes from './routes/orders.js'
 import dashboardRoutes from './routes/dashboard.js'
 import notificationsRoutes from './routes/notifications.js'
 import reportsRoutes from './routes/reports.js'
+import exportsRoutes from './routes/exports.js'
 import seedDevRoutes from './routes/seed-dev.js'
 import eventsRoutes from './events/events-routes.js'
 import deliverySheetRoutes from './routes/delivery-sheet.js'
@@ -79,6 +80,7 @@ app.route('/api/orders', ordersRoutes)
 app.route('/api/dashboard', dashboardRoutes)
 app.route('/api/notifications', notificationsRoutes)
 app.route('/api/reports', reportsRoutes)
+app.route('/api/exports', exportsRoutes)
 app.route('/api/seed-dev', seedDevRoutes)
 app.route('/api/events', eventsRoutes)
 

@@ -9,6 +9,7 @@ import {
   FileText,
   Settings,
   Store,
+  Wallet,
 } from 'lucide-react'
 
 export type NavLink = {
@@ -65,8 +66,11 @@ export const ADMIN_NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: 'Reportes',
-    icon: FileText,
-    links: [{ label: 'Notas de entrega', href: '/admin/notas-entrega', icon: FileText }],
+    title: 'Cobranza',
+    icon: Wallet,
+    links: [
+      { label: 'Resumen financiero', href: '/admin/cobranza', icon: Wallet },
+      { label: 'Notas de entrega', href: '/admin/notas-entrega', icon: FileText },
+    ],
   },
 ]

@@ -20,6 +20,7 @@
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.2",
+    "exceljs": "^4.4.0",
     "hono": "^4.13.8",
     "jsonwebtoken": "^9.0.2",
     "otplib": "^13.5.0",

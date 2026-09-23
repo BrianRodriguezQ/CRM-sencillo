@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, Navigate } from 'react-router-dom'
 import { useState } from 'react'
 import {
   Package,
@@ -46,7 +46,11 @@ import { formatDay, toISODate } from '../../lib/dates'
 export function DashboardPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { data, isLoading } = useDeliveryDashboard(user?.role)
+  // Cobranza NO usa este dashboard genérico: su home es /admin/cobranza
+  // (Resumen financiero). Acá solo evitamos que el hook pegue contra
+  // /dashboard/driver (su fallthrough) antes del redirect.
+  const isCobranza = user?.role === 'cobranza'
+  const { data, isLoading } = useDeliveryDashboard(isCobranza ? undefined : user?.role)
 
   const stats = data as { totals?: Record<string, unknown>; recentOrders?: unknown[] } | undefined
 
@@ -124,6 +128,12 @@ export function DashboardPage() {
   )
 
   const topClients = topClientsResp?.data ?? []
+
+  // Cobranza: su panel es /admin/cobranza (Resumen financiero). La landing
+  // /admin queda como puerta de entrada, pero acá la reenviamos al home real.
+  if (isCobranza) {
+    return <Navigate to="/admin/cobranza" replace />
+  }
 
   return (
     <div className="mx-auto max-w-6xl">

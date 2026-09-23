@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   FileText,
   Download,
@@ -139,22 +140,42 @@ function periodPreview(periodo: Periodo, fechaISO: string): string {
 }
 
 export function NotasEntregaPage() {
-  const [clienteId, setClienteId] = useState('')
+  // Deep link desde CobranzaPage: /admin/notas-entrega?clienteId=&nombre=&periodo=
+  // Se leen UNA vez al montar y alimentan los estados iniciales (la página
+  // sigue siendo 100% editable después).
+  const [searchParams] = useSearchParams()
+  const urlClienteId = searchParams.get('clienteId') ?? ''
+  const urlNombre = searchParams.get('nombre') ?? ''
+  const urlPeriodo = searchParams.get('periodo')
+  const urlFecha = searchParams.get('fecha')
+
+  const [clienteId, setClienteId] = useState(urlClienteId)
   // Typeahead lazy: el dropdown solo muestra resultados de la búsqueda (10).
   // El nombre elegido se persiste aparte porque el cliente puede no estar
   // entre los resultados actuales (CTO 2026-09-18: nunca listas enteras).
-  const [customerQuery, setCustomerQuery] = useState('')
-  const [customerName, setCustomerName] = useState('')
+  const [customerQuery, setCustomerQuery] = useState(urlNombre)
+  const [customerName, setCustomerName] = useState(urlNombre)
   const [customerIsGroup, setCustomerIsGroup] = useState(false)
   const [customerOpen, setCustomerOpen] = useState(false)
   // Sucursal específica de un grupo (vacío = grupo consolidado).
   const [branchId, setBranchId] = useState('')
-  const [periodo, setPeriodo] = useState<Periodo>('dia')
-  const [fecha, setFecha] = useState(todayISO())
+  const [periodo, setPeriodo] = useState<Periodo>(
+    urlPeriodo === 'dia' || urlPeriodo === 'semana' || urlPeriodo === 'mes' ? urlPeriodo : 'dia',
+  )
+  const [fecha, setFecha] = useState(() => {
+    if (urlFecha) return urlFecha
+    // Normalizar la fecha base al período que vino (mismo criterio que los
+    // controles de la página: semana → lunes, mes → día 1).
+    if (urlPeriodo === 'semana') return weekMonday(todayISO())
+    if (urlPeriodo === 'mes') return todayISO().slice(0, 8) + '01'
+    return todayISO()
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [done, setDone] = useState('')
+  // Exportación Excel (.xlsx) — separada del PDF para que no se pisen.
+  const [exportingXlsx, setExportingXlsx] = useState(false)
 
   // Vista previa web (JSON del backend, antes del PDF)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -264,6 +285,44 @@ export function NotasEntregaPage() {
       setError(err instanceof Error ? err.message : 'No se pudo generar el PDF')
     } finally {
       setLoading(false)
+    }
+  }
+
+  /** Excel .xlsx — MISMOS filtros que el PDF (cliente, sucursal, período y fecha). */
+  const handleExportXlsx = async () => {
+    setError('')
+    setNotice('')
+    setDone('')
+    setExportingXlsx(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('periodo', periodo)
+      if (fecha) params.set('fecha', fecha)
+      if (branchId) {
+        params.set('branchId', branchId)
+      } else if (clienteId) {
+        params.set('clienteId', clienteId)
+      }
+
+      const result = await downloadFile(
+        `/exports/notas-entrega.xlsx?${params.toString()}`,
+        'notas-entrega.xlsx',
+      )
+
+      if (!result.downloaded) {
+        setNotice(result.message ?? 'No hay nada para descargar en el período seleccionado.')
+        return
+      }
+
+      setDone(
+        selectedCustomer
+          ? `Excel de notas de entrega de ${selectedCustomer.name} generado correctamente.`
+          : 'Excel de notas de entrega generado correctamente.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo generar el Excel')
+    } finally {
+      setExportingXlsx(false)
     }
   }
 
@@ -518,6 +577,16 @@ export function NotasEntregaPage() {
           )}
 
           <div className="flex justify-end gap-3 border-t border-spi-border pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleExportXlsx}
+              loading={exportingXlsx}
+              disabled={exportingXlsx}
+            >
+              <Download className="h-4 w-4" />
+              Descargar Excel .xlsx
+            </Button>
             <Button type="button" onClick={handleGenerate} loading={loading}>
               <Download className="h-4 w-4" />
               Generar PDF

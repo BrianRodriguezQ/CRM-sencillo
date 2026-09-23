@@ -142,6 +142,23 @@ describe('AdminLayout', () => {
     expect(screen.queryByText('Métodos de Pago')).toBeNull()
   })
 
+  it('cobranza sees its own section (Resumen financiero + Notas de entrega) only', () => {
+    makeAuth({
+      user: { ...superadminUser, role: 'cobranza' },
+      isSuperadmin: false,
+    })
+    renderWithProviders(<AdminLayout />)
+    // Sección propia de cobranza (una por sidebar, se renderizan dos).
+    expect(screen.getAllByText('Resumen financiero').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Notas de entrega').length).toBeGreaterThanOrEqual(1)
+    // No ve gestión ni órdenes.
+    expect(screen.queryByText('Clientes')).toBeNull()
+    expect(screen.queryByText('Órdenes')).toBeNull()
+    expect(screen.queryByText('Conductores')).toBeNull()
+    expect(screen.queryByText('Equipo')).toBeNull()
+    expect(screen.queryByText('Métodos de Pago')).toBeNull()
+  })
+
   it('renders Cerrar sesión button', () => {
     renderWithProviders(<AdminLayout />)
     expect(screen.getAllByText('Cerrar sesión').length).toBeGreaterThanOrEqual(1)
@@ -188,6 +205,11 @@ describe('AdminLayout — guard por rol', () => {
       isSuperadmin: false,
       isoperador: true,
     })
+  const asCobranza = () =>
+    makeAuth({
+      user: { ...superadminUser, role: 'cobranza' },
+      isSuperadmin: false,
+    })
 
   it('bloquea al conductor que teclea una URL de gestión', () => {
     asConductor()
@@ -196,7 +218,7 @@ describe('AdminLayout — guard por rol', () => {
     expect(screen.getByText('No tenés acceso a esta sección')).toBeInTheDocument()
   })
 
-  it('bloquea al operador en Métodos de Pago pero no en Notas de entrega', () => {
+  it('bloquea al operador en Métodos de Pago y Notas de entrega (ahora de cobranza)', () => {
     asoperador()
 
     window.history.pushState({}, '', '/admin/metodos-pago')
@@ -206,7 +228,27 @@ describe('AdminLayout — guard por rol', () => {
 
     window.history.pushState({}, '', '/admin/notas-entrega')
     renderWithProviders(<AdminLayout />)
+    expect(screen.getByText('No tenés acceso a esta sección')).toBeInTheDocument()
+  })
+
+  it('no bloquea a cobranza en su panel ni en notas de entrega', () => {
+    asCobranza()
+
+    window.history.pushState({}, '', '/admin/cobranza')
+    const panel = renderWithProviders(<AdminLayout />)
     expect(screen.queryByText('No tenés acceso a esta sección')).toBeNull()
+    panel.unmount()
+
+    window.history.pushState({}, '', '/admin/notas-entrega')
+    renderWithProviders(<AdminLayout />)
+    expect(screen.queryByText('No tenés acceso a esta sección')).toBeNull()
+  })
+
+  it('bloquea a cobranza en la gestión de usuarios', () => {
+    asCobranza()
+    window.history.pushState({}, '', '/admin/equipo')
+    renderWithProviders(<AdminLayout />)
+    expect(screen.getByText('No tenés acceso a esta sección')).toBeInTheDocument()
   })
 
   it('no bloquea al rol correcto en su propia ruta', () => {

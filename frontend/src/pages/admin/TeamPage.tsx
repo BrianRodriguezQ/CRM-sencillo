@@ -35,6 +35,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   superadmin: 'Superadmin',
   operador: 'operador',
   conductor: 'Conductor',
+  cobranza: 'Cobranza',
 }
 
 const EMPTY_FORM = {
@@ -243,6 +244,7 @@ export function TeamPage() {
               <option value="superadmin">Superadmin</option>
               <option value="operador">operador</option>
               <option value="conductor">Conductor</option>
+              <option value="cobranza">Cobranza</option>
             </select>
             <select
               aria-label="Filtrar por estado"
@@ -491,8 +493,8 @@ export function TeamPage() {
             <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-700">
               Rol
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['operador', 'conductor', 'superadmin'] as UserRole[]).map((r) => (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(['operador', 'conductor', 'cobranza', 'superadmin'] as UserRole[]).map((r) => (
                 <button
                   key={r}
                   type="button"

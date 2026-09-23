@@ -16,9 +16,8 @@
  *
  * Acceso:
  *   - superadmin: todos los clientes
- *   - operador: solo sus pedidos (sellerId) — o todos los de un cliente/sucursal con filtro
  *   - cobranza: todos (gestión de notas de entrega)
- *   - conductor: sin acceso
+ *   - operador / conductor: sin acceso (las notas de entrega son de cobranza)
  */
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
@@ -214,7 +213,7 @@ interface ClientGroup {
   orders: DeliveryRow[]
 }
 
-async function buildDeliveryGroups(params: {
+export async function buildDeliveryGroups(params: {
   clienteId?: number
   branchId?: number
   periodo: Periodo
@@ -374,7 +373,7 @@ function noDataMessage(clienteId?: number): string {
 
 router.get(
   '/delivery-notes',
-  requireRole('superadmin', 'operador', 'cobranza'),
+  requireRole('superadmin', 'cobranza'),
   zValidator('query', querySchema),
   async (c) => {
     const auth = c.get('user')
@@ -585,7 +584,7 @@ router.get(
 
 router.get(
   '/delivery-notes-data',
-  requireRole('superadmin', 'operador', 'cobranza'),
+  requireRole('superadmin', 'cobranza'),
   zValidator('query', querySchema),
   async (c) => {
     const auth = c.get('user')
@@ -609,11 +608,11 @@ return c.json({ success: true, data: result.dto })
 
 /* ─── GET /reports/delivery-note/:id — PDF individual por orden ───
  * Genera una NOTA DE ENTREGA individual para UN pedido (con su QR).
- * Acceso: superadmin, vendedor (solo sus pedidos), conductor (solo sus entregadas).
+ * Acceso: superadmin y cobranza (gestión de cobros y notas de entrega).
  */
 router.get(
   '/delivery-note/:id',
-  requireRole('superadmin', 'operador', 'conductor'),
+  requireRole('superadmin', 'cobranza'),
   async (c) => {
     const auth = c.get('user')
     const id = Number(c.req.param('id'))

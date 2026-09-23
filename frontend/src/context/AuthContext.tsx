@@ -9,7 +9,7 @@ import {
   restoreSession,
 } from '../api/client'
 
-export type UserRole = 'superadmin' | 'operador' | 'conductor'
+export type UserRole = 'superadmin' | 'operador' | 'conductor' | 'cobranza'
 
 export interface User {
   id: number
@@ -173,7 +173,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSuperadmin = user?.role === 'superadmin'
   const isoperador = user?.role === 'operador'
   const isConductor = user?.role === 'conductor'
-  const isStaff = !!user && (isSuperadmin || isoperador || isConductor)
+  // Cobranza gestiona cobros/cuentas pendientes; sin backend de sesión propio
+  // (usa el mismo token), solo hace falta que cuente como staff del panel.
+  const isStaff = !!user && (isSuperadmin || isoperador || isConductor || user.role === 'cobranza')
 
   return (
     <AuthContext.Provider

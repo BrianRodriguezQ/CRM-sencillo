@@ -18,7 +18,10 @@ import type { UserRole } from '../context/AuthContext'
  * el acceso es responsabilidad de quien agrega la ruta.
  */
 const ROUTE_ROLES: Record<string, UserRole[]> = {
-  '/admin': ['superadmin', 'operador', 'conductor'],
+  // '/admin' es la landing de TODO rol logueado (AuthPage redirige acá tras
+  // el login). Cobranza tiene su propio panel en /admin/cobranza, pero DEBE
+  // poder aterrizar en el panel para que el guard no lo bloquee al entrar.
+  '/admin': ['superadmin', 'operador', 'conductor', 'cobranza'],
   '/admin/ordenes': ['superadmin', 'operador', 'conductor'],
   // El conductor recibe y ejecuta órdenes; NO crea (el backend también lo exige).
   '/admin/ordenes/nueva': ['superadmin', 'operador'],
@@ -30,8 +33,12 @@ const ROUTE_ROLES: Record<string, UserRole[]> = {
   '/admin/equipo/conductores': ['superadmin'],
   '/admin/equipo/operadores': ['superadmin'],
   '/admin/metodos-pago': ['superadmin'],
-  '/admin/notas-entrega': ['superadmin', 'operador'],
-  '/admin/perfil': ['superadmin', 'operador', 'conductor'],
+  // Resumen financiero de cobranza (deudores top + stats por método de pago).
+  '/admin/cobranza': ['superadmin', 'cobranza'],
+  // Las notas de entrega se MOVIERON del operador a cobranza (decisión del
+  // negocio: el operador vende y entrega; cobranza emite los comprobantes).
+  '/admin/notas-entrega': ['superadmin', 'cobranza'],
+  '/admin/perfil': ['superadmin', 'operador', 'conductor', 'cobranza'],
 }
 
 /** Roles que pueden ver `pathname`, o `null` si la ruta no está restringida. */

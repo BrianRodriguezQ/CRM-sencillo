@@ -326,7 +326,9 @@ function UserMenu() {
       ? 'Superadmin'
       : user?.role === 'operador'
         ? 'operador'
-        : 'Conductor'
+        : user?.role === 'cobranza'
+          ? 'Cobranza'
+          : 'Conductor'
 
   return (
     <div className="relative" ref={menuRef}>

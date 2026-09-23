@@ -17,6 +17,7 @@ import { TeamPage } from './pages/admin/TeamPage'
 import { TeamMemberDetailPage } from './pages/admin/TeamMemberDetailPage'
 import { PaymentMethodsPage } from './pages/admin/PaymentMethodsPage'
 import { NotasEntregaPage } from './pages/admin/NotasEntregaPage'
+import { CobranzaPage } from './pages/admin/CobranzaPage'
 import { ProfilePage } from './pages/admin/ProfilePage'
 import { EntregaPublicaPage } from './pages/EntregaPublicaPage'
 
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="equipo/operadores" element={<SellersPage />} />
             <Route path="equipo/:id" element={<TeamMemberDetailPage />} />
             <Route path="metodos-pago" element={<PaymentMethodsPage />} />
+            <Route path="cobranza" element={<CobranzaPage />} />
             <Route path="notas-entrega" element={<NotasEntregaPage />} />
             <Route path="perfil" element={<ProfilePage />} />
           </Route>
