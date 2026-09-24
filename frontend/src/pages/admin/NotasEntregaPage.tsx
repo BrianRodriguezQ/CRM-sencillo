@@ -235,14 +235,18 @@ export function NotasEntregaPage() {
         params.set('clienteId', clienteId)
       }
 
-      const res = await api.get<{ data: DeliveryNoteData | null; message?: string }>(
+      const res = await api.get<DeliveryNoteData | null>(
         `/reports/delivery-notes-data?${params.toString()}`,
       )
-      if (res.data && res.data.data) {
-        setPreviewData(res.data.data)
+      // OJO: api.get devuelve { success, data } en runtime → res.data YA es el dto.
+      // Antes esto hacía if(res.data && res.data.data) y nunca entraba (preview roto).
+      const dto = res.data
+      if (dto) {
+        setPreviewData(dto)
       } else {
         // "No hay entregas en el período" → aviso neutro, no error.
-        setPreviewNotice(res.data?.message ?? 'No hay pedidos entregados en el período seleccionado.')
+        const msg = (res as unknown as { message?: string }).message
+        setPreviewNotice(msg ?? 'No hay pedidos entregados en el período seleccionado.')
       }
     } catch (err) {
       setPreviewError(err instanceof Error ? err.message : 'No se pudo cargar la vista previa')

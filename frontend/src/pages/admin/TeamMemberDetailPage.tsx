@@ -75,17 +75,17 @@ export function TeamMemberDetailPage() {
   const isDriver = member.role === 'conductor'
   const isCobranza = member.role === 'cobranza'
   const debtors = data.topDebtors ?? []
-  // Rutas agrupadas bajo Equipo (CTO 2026-09-18, decisión 1-B). Cobranza no
-  // tiene página propia de operadores/conductores → cae a la lista general.
+  // PUNTO 5 del CTO: Equipo se organiza en subpestañas → el "volver" cae en el
+  // tab del rol. Las rutas viejas de conductores/operadores redirigen acá igual.
   const backTo = isDriver
-    ? '/admin/equipo/conductores'
+    ? '/admin/equipo?tab=conductores'
     : isCobranza
-      ? '/admin/equipo'
-      : '/admin/equipo/operadores'
+      ? '/admin/equipo?tab=cobranza'
+      : '/admin/equipo?tab=operadores'
   const backLabel = isDriver
     ? 'Volver a conductores'
     : isCobranza
-      ? 'Volver al equipo'
+      ? 'Volver a cobranza'
       : 'Volver a operadores'
 
   const statSource: Array<{ label: string; value: string; tone: string }> = isCobranza

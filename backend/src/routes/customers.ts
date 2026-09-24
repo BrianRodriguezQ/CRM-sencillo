@@ -7,7 +7,7 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
-import { eq, and, or, ilike, count, desc, asc, sql, isNull, type SQL } from 'drizzle-orm'
+import { eq, and, or, ilike, count, desc, asc, sql, isNull, isNotNull, type SQL } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { customers, users } from '../db/schema.js'
 import { authMiddleware, requireRole } from '../middleware/auth.js'
@@ -27,6 +27,28 @@ const RIF_PATTERN = /^J-\d{6,9}$/
 
 // RIF de sucursal: permite sufijo de rama (ej: J-123456789-1)
 const BRANCH_RIF_PATTERN = /^J-\d{6,9}(-\d{1,4})?$/
+
+/**
+ * Schema de sucursal (branch). Se usa tanto para POST /:groupId/branches como
+ * para el array `branches` del POST / (crear cliente con su sucursal principal
+ * y secundarias opcionales — Punto 3 del mandato).
+ */
+const branchSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es requerido').max(255),
+  rif: z
+    .preprocess(normalizeRif, z.string().regex(BRANCH_RIF_PATTERN, 'Formato de RIF inválido (J- + números)').nullable())
+    .optional(),
+  phone: z.string().trim().max(50).optional().nullable(),
+  email: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() ? stripHtml(v).toLowerCase() : v),
+    z.string().email('Email inválido').optional().nullable(),
+  ),
+  address: z.string().trim().optional().nullable(),
+  contactPerson: z.string().trim().max(255).optional().nullable(),
+  isBillingAddress: z.boolean().optional().default(false),
+  isDeliveryAddress: z.boolean().optional().default(false),
+  isActive: z.boolean().optional().default(true),
+})
 
 /** Prepara un RIF para guardar: normaliza espacios, "" → null, mayúscula. */
 function normalizeRif(value: unknown): string | null {
@@ -76,6 +98,15 @@ router.get('/', async (c) => {
     ? and(eq(customers.isActive, isActive), isNull(customers.parentId), searchWhere)
     : and(eq(customers.isActive, isActive), isNull(customers.parentId))
 
+  // Conteo de sucursales ACTIVAS por grupo (para el badge "N sedes" de la
+  // lista unificada del Punto 4 del mandato).
+  const branchCounts = db
+    .select({ parentId: customers.parentId, branchCount: count().as('branchCount') })
+    .from(customers)
+    .where(and(isNotNull(customers.parentId), eq(customers.isActive, true)))
+    .groupBy(customers.parentId)
+    .as('branch_counts')
+
   const [rows, [totalRow]] = await Promise.all([
     db
       .select({
@@ -90,12 +121,15 @@ router.get('/', async (c) => {
         createdByName: users.name,
         isGroup: customers.isGroup,
         parentId: customers.parentId,
+        isPrimary: customers.isPrimary,
         isActive: customers.isActive,
         createdAt: customers.createdAt,
         updatedAt: customers.updatedAt,
+        branchCount: branchCounts.branchCount,
       })
       .from(customers)
       .leftJoin(users, eq(users.id, customers.createdBy))
+      .leftJoin(branchCounts, eq(branchCounts.parentId, customers.id))
       .where(baseWhere)
       .orderBy(desc(customers.createdAt))
       .limit(perPage)
@@ -106,7 +140,8 @@ router.get('/', async (c) => {
   return c.json({
     success: true,
     data: {
-      items: rows,
+      // leftJoin puede dejar branchCount null → 0 para clientes sin sedes
+      items: rows.map((r) => ({ ...r, branchCount: Number(r.branchCount ?? 0) })),
       total: Number(totalRow?.count ?? 0),
       page,
       perPage,
@@ -114,7 +149,15 @@ router.get('/', async (c) => {
   })
 })
 
-/** POST / — crear cliente (lo registra el operador actual). */
+/**
+ * POST / — crear cliente (lo registra el operador actual).
+ *
+ * Punto 3 del mandato: por defecto el cliente se crea con su SUCURSAL
+ * PRINCIPAL (obligatoria). Si el payload trae `branches`, el cliente se crea
+ * SIEMPRE como grupo/franquicia (isGroup=true forzado) y las sedes se crean
+ * en la misma transacción; la primera del array queda como principal
+ * (is_primary=true). Sin `branches` → flujo anterior (cliente simple).
+ */
 const createCustomerSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es requerido').max(255),
   rif: z
@@ -128,12 +171,73 @@ const createCustomerSchema = z.object({
   notes: z.string().trim().optional().nullable(),
   // Grupo/franquicia: si true, este cliente agrupa sucursales
   isGroup: z.boolean().optional().default(false),
+  // Sucursales a crear junto con el cliente (la primera = principal)
+  branches: z.array(branchSchema).optional(),
 })
 
 router.post('/', zValidator('json', createCustomerSchema), async (c) => {
   const auth = c.get('user')
   try {
     const data = c.req.valid('json')
+
+    // Con branches: grupo + sedes en una sola transacción (patrón PGlite).
+    if (data.branches && data.branches.length > 0) {
+      const [customer, createdBranches] = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(customers)
+          .values({
+            name: data.name,
+            rif: data.rif ?? null,
+            phone: data.phone ?? null,
+            email: data.email ?? null,
+            address: data.address ?? null,
+            notes: data.notes ?? null,
+            createdBy: auth.id,
+            isGroup: true, // forzado: si trae sedes, es grupo
+            isActive: true,
+          })
+          .returning()
+
+        const branches: typeof created[] = []
+        for (let i = 0; i < (data.branches?.length ?? 0); i++) {
+          const b = data.branches![i]
+          const [branch] = await tx
+            .insert(customers)
+            .values({
+              name: b.name,
+              rif: b.rif ?? null,
+              phone: b.phone ?? null,
+              email: b.email ?? null,
+              address: b.address ?? null,
+              contactPerson: b.contactPerson ?? null,
+              isBillingAddress: b.isBillingAddress ?? false,
+              isDeliveryAddress: b.isDeliveryAddress ?? false,
+              isGroup: false,
+              parentId: created.id,
+              createdBy: auth.id,
+              isActive: b.isActive ?? true,
+              // La primera sede del array es la principal (Punto 3)
+              isPrimary: i === 0,
+            })
+            .returning()
+          branches.push(branch)
+        }
+        return [created, branches] as const
+      })
+
+      await writeAuditLog({
+        userId: auth.id,
+        action: 'customer_group.created',
+        metadata: {
+          customerId: customer.id,
+          name: customer.name,
+          branchCount: createdBranches.length,
+        },
+        ipAddress: clientIp(c),
+      })
+
+      return c.json({ success: true, data: { customer, branches: createdBranches } }, 201)
+    }
 
     const [customer] = await db
       .insert(customers)
@@ -233,6 +337,7 @@ router.get('/:id', async (c) => {
       createdByName: users.name,
       isGroup: customers.isGroup,
       parentId: customers.parentId,
+      isPrimary: customers.isPrimary,
       contactPerson: customers.contactPerson,
       isBillingAddress: customers.isBillingAddress,
       isDeliveryAddress: customers.isDeliveryAddress,
@@ -268,6 +373,7 @@ router.get('/:id', async (c) => {
         createdByName: users.name,
         isGroup: customers.isGroup,
         parentId: customers.parentId,
+        isPrimary: customers.isPrimary,
         contactPerson: customers.contactPerson,
         isBillingAddress: customers.isBillingAddress,
         isDeliveryAddress: customers.isDeliveryAddress,
@@ -447,21 +553,6 @@ router.post('/:id/convert-to-group', async (c) => {
  * SUCURSALES (BRANCHES) — gestión de sucursales de grupos/franquicias
  * ═══════════════════════════════════════════════════════════════════════ */
 
-const branchSchema = z.object({
-  name: z.string().trim().min(1, 'El nombre es requerido').max(255),
-  rif: z.preprocess(normalizeRif, z.string().regex(BRANCH_RIF_PATTERN, 'Formato de RIF inválido (J- + números)').nullable()).optional(),
-  phone: z.string().trim().max(50).optional().nullable(),
-  email: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() ? stripHtml(v).toLowerCase() : v),
-    z.string().email('Email inválido').optional().nullable(),
-  ),
-  address: z.string().trim().optional().nullable(),
-  contactPerson: z.string().trim().max(255).optional().nullable(),
-  isBillingAddress: z.boolean().optional().default(false),
-  isDeliveryAddress: z.boolean().optional().default(false),
-  isActive: z.boolean().optional().default(true),
-})
-
 /** GET /:groupId/branches — listar sucursales de un grupo/franquicia. */
 router.get('/:groupId/branches', async (c) => {
   const auth = c.get('user')
@@ -488,6 +579,7 @@ router.get('/:groupId/branches', async (c) => {
       email: customers.email,
       address: customers.address,
       contactPerson: customers.contactPerson,
+      isPrimary: customers.isPrimary,
       isBillingAddress: customers.isBillingAddress,
       isDeliveryAddress: customers.isDeliveryAddress,
       parentId: customers.parentId,

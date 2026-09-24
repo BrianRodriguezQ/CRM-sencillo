@@ -79,10 +79,12 @@ export function CobranzaPage() {
     isLoading: revenueLoading,
     isError: revenueError,
   } = useRevenueSeries('mes', desdeStr, hastaStr)
-  const revenueSeries = revenueResp?.data?.series ?? []
+  const revenueSeries = revenueResp?.series ?? []
   // label legible ("septiembre de 2026") para los tooltips, key = bucket YYYY-MM.
   const revenueLabels =
-    revenueSeries.length > 0 ? new Map(revenueSeries.map((s) => [s.fecha, s.label])) : new Map<string, string>()
+    revenueSeries.length > 0
+      ? new Map(revenueSeries.map((s: { fecha: string; label: string }) => [s.fecha, s.label]))
+      : new Map<string, string>()
 
   const totals = data?.totals
   const topDebtors = data?.topDebtors ?? []
@@ -198,8 +200,8 @@ export function CobranzaPage() {
                   <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: '#6b7280' }} />
                   <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
                   <Tooltip
-                    formatter={(value) => formatMoney(Number(value))}
-                    labelFormatter={(fecha) => revenueLabels.get(String(fecha)) ?? String(fecha)}
+                    formatter={(value: any) => formatMoney(Number(value))}
+                    labelFormatter={(fecha: any) => revenueLabels.get(String(fecha)) ?? String(fecha)}
                   />
                   <Legend />
                   <Bar dataKey="cobrado" name="Cobrado" stackId="cobro" fill="#16a34a" radius={[2, 2, 0, 0]} />
@@ -232,8 +234,8 @@ export function CobranzaPage() {
                   <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: '#6b7280' }} />
                   <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
                   <Tooltip
-                    formatter={(value) => formatMoney(Number(value))}
-                    labelFormatter={(fecha) => revenueLabels.get(String(fecha)) ?? String(fecha)}
+                    formatter={(value: any) => formatMoney(Number(value))}
+                    labelFormatter={(fecha: any) => revenueLabels.get(String(fecha)) ?? String(fecha)}
                   />
                   <Legend />
                   <Line type="monotone" dataKey="cobrado" name="Cobrado" stroke="#16a34a" strokeWidth={2} dot={false} />
@@ -254,7 +256,7 @@ export function CobranzaPage() {
               <Users className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Deudores top</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Pendientes por pagar</h2>
               <p className="text-xs text-gray-500">Clientes con mayor monto pendiente</p>
             </div>
           </div>
@@ -262,7 +264,7 @@ export function CobranzaPage() {
           {isLoading ? (
             <LoadingState size="sm" label="Cargando deudores…" />
           ) : topDebtors.length === 0 ? (
-            <p className="py-8 text-center text-sm text-gray-400">Sin deudores pendientes 🎉</p>
+            <p className="py-8 text-center text-sm text-gray-400">Sin pendientes por pagar</p>
           ) : (
             <ul className="space-y-2">
               {topDebtors.map((d, i) => (
@@ -305,8 +307,8 @@ export function CobranzaPage() {
               <CreditCard className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Cobrado por método</h2>
-              <p className="text-xs text-gray-500">Según lo registrado en los pagos</p>
+              <h2 className="text-lg font-semibold text-gray-900">Cobro por método</h2>
+              <p className="text-xs text-gray-400">Desglose de la entrada de pagos según los métodos registrados</p>
             </div>
           </div>
 

@@ -129,9 +129,10 @@ export function useRevenueSeries(
       const params = new URLSearchParams({ periodo })
       if (desde) params.set('desde', desde)
       if (hasta) params.set('hasta', hasta)
-      const res = await api.get<{ data: { periodo: string; series: RevenueSeriesPoint[] } }>(
+      const res = await api.get<{ periodo: string; series: RevenueSeriesPoint[] }>(
         `/dashboard/revenue-series?${params.toString()}`,
       )
+      // api.get<T> devuelve ApiResponse<T> = { success, data: T } en runtime → res.data ES { periodo, series }.
       return res.data
     },
     enabled: !!desde && !!hasta,

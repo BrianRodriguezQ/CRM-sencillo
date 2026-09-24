@@ -38,6 +38,7 @@ export function NewOrderPage() {
   // deselecciona con «Quitar», que devuelve el formulario a la búsqueda.
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [customerQuery, setCustomerQuery] = useState('')
+  const [customerOpen, setCustomerOpen] = useState(false)
   // Sucursal seleccionada (solo si el cliente es grupo/franquicia)
   const [selectedBranchId, setSelectedBranchId] = useState<number | ''>('')
   const [autoAssign, setAutoAssign] = useState(true)
@@ -66,7 +67,10 @@ export function NewOrderPage() {
   // El dropdown de clientes SOLO se despliega mientras se escribe en la
   // búsqueda (customerQuery no vacío y sin cliente seleccionado). Con el campo
   // vacío NO se lista nada: la lista va apareciendo a medida que se filtra.
-  const { data: customersData } = useCustomersList({ search: customerQuery, perPage: 10 })
+  const { data: customersData, isLoading: loadingCustomers } = useCustomersList({
+    search: customerQuery.trim() || undefined,
+    perPage: 10,
+  })
   const { data: drivers } = useDriversList()
   const { data: paymentMethods } = usePaymentMethodsList()
   const activePayments = (paymentMethods ?? []).filter((p) => p.isActive)
@@ -302,26 +306,39 @@ export function NewOrderPage() {
                 <input
                   type="text"
                   value={customerQuery}
+                  onFocus={() => setCustomerOpen(true)}
+                  onBlur={() => setTimeout(() => setCustomerOpen(false), 150)}
                   onChange={(e) => {
                     setCustomerQuery(e.target.value)
                     setSelectedCustomer(null)
                   }}
-                  placeholder="Buscar cliente por nombre, teléfono o email..."
+                  placeholder={
+                    customersData?.items === undefined && customerQuery.trim() === ''
+                      ? 'Cargando clientes...'
+                      : 'Buscar cliente por nombre, teléfono o email...'
+                  }
                   className="w-full rounded-lg border border-spi-border bg-surface py-2 pl-9 pr-3 text-sm text-spi-text placeholder-gray-400 outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20"
                 />
               </div>
-              {customerQuery.trim() !== '' && (
+              {customerOpen && (
                 customerOptions.length > 0 ? (
                   <ul className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-spi-border divide-y divide-spi-border">
+                    {!customerQuery.trim() && (
+                      <p className="border-b border-spi-border px-3 py-2 text-xs text-gray-400">
+                        Primeros 10 clientes - escribí para filtrar.
+                      </p>
+                    )}
                     {customerOptions
                       .filter((c) => c.isActive)
                       .map((c) => (
                         <li key={c.id}>
                           <button
                             type="button"
+                            onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
                               setSelectedCustomer(c)
                               setCustomerQuery(c.name)
+                              setCustomerOpen(false)
                             }}
                             className="w-full flex items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-white/5"
                           >
@@ -333,7 +350,9 @@ export function NewOrderPage() {
                   </ul>
                 ) : (
                   <p className="mt-2 rounded-lg border border-dashed border-spi-border px-3 py-2 text-sm text-gray-400">
-                    No se encontraron clientes
+                    {customersData?.items === undefined && customerQuery.trim() === ''
+                      ? 'Cargando clientes...'
+                      : 'Primeros 10 clientes - escribí para filtrar.'}
                   </p>
                 )
               )}

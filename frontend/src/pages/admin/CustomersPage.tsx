@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Users, Plus, Pencil, Phone, Mail, MapPin, Eye, Building2 } from 'lucide-react'
+import { Search, Plus, Pencil, Phone, Mail, MapPin, Eye, Building2, Store, X, Info } from 'lucide-react'
 import {
   useCustomersList,
-  useCustomerGroups,
   useCreateCustomer,
   useUpdateCustomer,
   type Customer,
+  type BranchPayload,
 } from '../../hooks/queries/useCustomers'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
@@ -17,34 +17,186 @@ import { EmptyState } from '../../components/ui/EmptyState'
 import { PrefixedNumberInput } from '../../components/ui/PrefixedNumberInput'
 import { LoadingState } from '../../components/ui/LoadingState'
 
-const EMPTY_FORM = { name: '', rif: '', phone: '', email: '', address: '', notes: '', isGroup: false }
+/* ─── Punto 3 y 4 del mandato ─────────────────────────────────────────────
+ * Ya no existe "cliente individual" como concepto: todo cliente es un grupo
+ * con 1 o más sedes. No hay más tabs Clientes/Grupos: UNA sola lista que los
+ * muestra todos, y el form crea el cliente con su SUCURSAL PRINCIPAL
+ * (obligatoria) + secundarias opcionales. No hay toggle "es grupo/franquicia".
+ * ───────────────────────────────────────────────────────────────────────── */
 
-type Tab = 'clientes' | 'grupos'
+interface BranchFormRow {
+  name: string
+  contactPerson: string
+  rif: string
+  phone: string
+  email: string
+  address: string
+  isBillingAddress: boolean
+  isDeliveryAddress: boolean
+}
+
+interface CustomerForm {
+  name: string
+  rif: string
+  phone: string
+  email: string
+  address: string
+  notes: string
+  branches: BranchFormRow[]
+}
+
+const EMPTY_BRANCH: BranchFormRow = {
+  name: 'Sucursal principal',
+  contactPerson: '',
+  rif: '',
+  phone: '',
+  email: '',
+  address: '',
+  isBillingAddress: true,
+  isDeliveryAddress: true,
+}
+
+const EMPTY_FORM: CustomerForm = {
+  name: '',
+  rif: '',
+  phone: '',
+  email: '',
+  address: '',
+  notes: '',
+  branches: [{ ...EMPTY_BRANCH }],
+}
+
+function branchToPayload(b: BranchFormRow): BranchPayload {
+  return {
+    name: b.name.trim(),
+    rif: /\d/.test(b.rif) ? b.rif.trim() : null,
+    phone: b.phone.trim() || null,
+    email: b.email.trim() || null,
+    address: b.address.trim() || null,
+    contactPerson: b.contactPerson.trim() || null,
+    isBillingAddress: b.isBillingAddress,
+    isDeliveryAddress: b.isDeliveryAddress,
+  }
+}
+
+/** Bloque de sucursal del form (principal y secundarias comparten este layout). */
+function BranchFields({
+  title,
+  value,
+  onChange,
+  onRemove,
+  showRif,
+}: {
+  title: string
+  value: BranchFormRow
+  onChange: (next: BranchFormRow) => void
+  onRemove?: () => void
+  showRif: boolean
+}) {
+  return (
+    <div className="rounded-lg border border-spi-border bg-gray-50/50 dark:bg-white/5 p-4 space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+          <Store className="h-4 w-4 text-spi-navy" />
+          {title}
+        </p>
+        {onRemove && (
+          <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+            <X className="h-3.5 w-3.5" />
+            Quitar
+          </Button>
+        )}
+      </div>
+      <Input
+        label="Nombre de la sucursal *"
+        value={value.name}
+        onChange={(e) => onChange({ ...value, name: e.target.value })}
+        placeholder="Ej: Sucursal Centro"
+        required
+      />
+      <Input
+        label="Persona de contacto"
+        value={value.contactPerson}
+        onChange={(e) => onChange({ ...value, contactPerson: e.target.value })}
+        placeholder="Encargado, gerente de la sucursal..."
+      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {showRif && (
+          <PrefixedNumberInput
+            label="RIF"
+            prefix="J-"
+            value={value.rif}
+            onChange={(v) => onChange({ ...value, rif: v })}
+            placeholder="123456789"
+            maxLength={9}
+            hint="Sufijo de rama opcional: 123456789-1"
+          />
+        )}
+        <Input
+          label="Teléfono"
+          value={value.phone}
+          onChange={(e) => onChange({ ...value, phone: e.target.value })}
+          placeholder="+58 412 1234567"
+        />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input
+          label="Email"
+          type="email"
+          value={value.email}
+          onChange={(e) => onChange({ ...value, email: e.target.value })}
+          placeholder="sucursal@mail.com"
+        />
+        <Input
+          label="Dirección"
+          value={value.address}
+          onChange={(e) => onChange({ ...value, address: e.target.value })}
+          placeholder="Dirección de la sucursal"
+        />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+        <label className="flex cursor-pointer items-center justify-between rounded-lg border border-spi-border bg-surface px-3 py-2.5">
+          <span className="text-sm font-medium text-gray-900">Dirección de facturación</span>
+          <input
+            type="checkbox"
+            checked={value.isBillingAddress}
+            onChange={(e) => onChange({ ...value, isBillingAddress: e.target.checked })}
+            className="h-4 w-4 accent-spi-text"
+          />
+        </label>
+        <label className="flex cursor-pointer items-center justify-between rounded-lg border border-spi-border bg-surface px-3 py-2.5">
+          <span className="text-sm font-medium text-gray-900">Dirección de entrega</span>
+          <input
+            type="checkbox"
+            checked={value.isDeliveryAddress}
+            onChange={(e) => onChange({ ...value, isDeliveryAddress: e.target.checked })}
+            className="h-4 w-4 accent-spi-text"
+          />
+        </label>
+      </div>
+    </div>
+  )
+}
 
 export function CustomersPage() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<Tab>('clientes')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'activo' | 'inactivo' | ''>('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Customer | null>(null)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState<CustomerForm>(EMPTY_FORM)
   const [error, setError] = useState('')
 
-  const isGroupsTab = tab === 'grupos'
-
-  // En la pestaña Grupos usamos el endpoint /customers/groups (solo isGroup).
-  const listQuery = isGroupsTab
-    ? useCustomerGroups({ page, perPage, search })
-    : useCustomersList({
-        page,
-        perPage,
-        search,
-        ...(statusFilter ? { isActive: statusFilter === 'activo' } : {}),
-      })
-  const { data, isLoading } = listQuery
+  // Lista unificada (Punto 4): /customers trae raíces — grupos y ex
+  // individuales convertidos por la migración 0012 — sin sucursales sueltas.
+  const { data, isLoading } = useCustomersList({
+    page,
+    perPage,
+    search,
+    ...(statusFilter ? { isActive: statusFilter === 'activo' } : {}),
+  })
   const { mutate: createCustomer, isPending: creating } = useCreateCustomer()
   const { mutate: updateCustomer, isPending: updating } = useUpdateCustomer()
 
@@ -54,13 +206,18 @@ export function CustomersPage() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ ...EMPTY_FORM, isGroup: isGroupsTab })
+    setForm({
+      ...EMPTY_FORM,
+      branches: [{ ...EMPTY_BRANCH }],
+    })
     setError('')
     setModalOpen(true)
   }
 
   const openEdit = (c: Customer) => {
     setEditing(c)
+    // En edición solo se tocan los datos del cliente; las sedes se gestionan
+    // desde la ficha (CustomerDetailPage).
     setForm({
       name: c.name,
       rif: c.rif ?? '',
@@ -68,34 +225,60 @@ export function CustomersPage() {
       email: c.email ?? '',
       address: c.address ?? '',
       notes: c.notes ?? '',
-      isGroup: Boolean(c.isGroup),
+      branches: [],
     })
     setError('')
     setModalOpen(true)
   }
 
-  const switchTab = (t: Tab) => {
-    setTab(t)
-    setPage(1)
-    setSearch('')
-    setStatusFilter('')
+  const setBranch = (index: number, next: BranchFormRow) => {
+    setForm((f) => ({
+      ...f,
+      branches: f.branches.map((b, i) => (i === index ? next : b)),
+    }))
+  }
+
+  const addBranch = () => {
+    setForm((f) => ({
+      ...f,
+      branches: [...f.branches, { ...EMPTY_BRANCH, name: `Sucursal ${f.branches.length + 1}` }],
+    }))
+  }
+
+  const removeBranch = (index: number) => {
+    setForm((f) => ({
+      ...f,
+      branches: f.branches.filter((_, i) => i !== index),
+    }))
   }
 
   const handleSubmit = () => {
     setError('')
     if (!form.name.trim()) {
-      setError('El nombre es obligatorio')
+      setError('El nombre del cliente es obligatorio')
       return
     }
+    // La sucursal principal nunca se quita: el cliente SIEMPRE tiene al menos 1 sede.
+    const principal = form.branches[0]
+    if (!editing && !principal?.name.trim()) {
+      setError('El nombre de la sucursal principal es obligatorio')
+      return
+    }
+    if (!editing && form.branches.some((b, i) => i > 0 && !b.name.trim())) {
+      setError('Completá el nombre de cada sucursal secundaria (o quitá la vacía)')
+      return
+    }
+
     const payload = {
       name: form.name.trim(),
       // Si solo tocó el prefijo J- sin números, se guarda null (no "J-" suelto).
-      rif: /\d/.test(form.rif) ? form.rif : null,
+      rif: /\d/.test(form.rif) ? form.rif.trim() : null,
       phone: form.phone.trim() || null,
       email: form.email.trim() || null,
       address: form.address.trim() || null,
       notes: form.notes.trim() || null,
-      isGroup: form.isGroup,
+      // Al crear, el cliente se arma con sus sedes (primera = principal).
+      ...(editing ? {} : { branches: form.branches.map(branchToPayload) }),
     }
 
     if (editing) {
@@ -125,43 +308,13 @@ export function CustomersPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
           <p className="text-sm text-gray-500">
-            {isGroupsTab
-              ? 'Grupos y franquicias: clientes que agrupan varias sucursales.'
-              : 'A quién venden los operadores.'}
+            Todos los clientes: grupos, franquicias y negocios con una o más sedes.
           </p>
         </div>
         <Button type="button" onClick={openCreate}>
           <Plus className="h-4 w-4" />
-          {isGroupsTab ? 'Nuevo grupo' : 'Nuevo cliente'}
+          Nuevo cliente
         </Button>
-      </div>
-
-      {/* Tabs: Clientes / Grupos (franquicias) */}
-      <div className="mb-4 flex gap-1 rounded-xl border border-spi-border bg-surface p-1 w-fit">
-        <button
-          type="button"
-          onClick={() => switchTab('clientes')}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            !isGroupsTab
-              ? 'bg-spi-text text-white'
-              : 'text-gray-600 hover:bg-gray-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <Users className="h-4 w-4" />
-          Clientes
-        </button>
-        <button
-          type="button"
-          onClick={() => switchTab('grupos')}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            isGroupsTab
-              ? 'bg-spi-text text-white'
-              : 'text-gray-600 hover:bg-gray-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <Building2 className="h-4 w-4" />
-          Grupos / Franquicias
-        </button>
       </div>
 
       <Card className="mb-4">
@@ -176,29 +329,23 @@ export function CustomersPage() {
                   setSearch(e.target.value)
                   setPage(1)
                 }}
-                placeholder={
-                  isGroupsTab
-                    ? 'Buscar grupo o franquicia por nombre, RIF...'
-                    : 'Buscar por nombre, teléfono, email o RIF...'
-                }
+                placeholder="Buscar por nombre, teléfono, email o RIF..."
                 className="w-full rounded-lg border border-spi-border bg-surface py-2 pl-9 pr-3 text-sm text-spi-text placeholder-gray-400 outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20"
               />
             </div>
-            {!isGroupsTab && (
-              <select
-                aria-label="Filtrar por estado"
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value as 'activo' | 'inactivo' | '')
-                  setPage(1)
-                }}
-                className="rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20 cursor-pointer"
-              >
-                <option value="">Todos los estados</option>
-                <option value="activo">Activos</option>
-                <option value="inactivo">Inactivos</option>
-              </select>
-            )}
+            <select
+              aria-label="Filtrar por estado"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as 'activo' | 'inactivo' | '')
+                setPage(1)
+              }}
+              className="rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20 cursor-pointer"
+            >
+              <option value="">Todos los estados</option>
+              <option value="activo">Activos</option>
+              <option value="inactivo">Inactivos</option>
+            </select>
           </div>
         </div>
       </Card>
@@ -208,14 +355,10 @@ export function CustomersPage() {
           <LoadingState />
         ) : items.length === 0 ? (
           <EmptyState
-            icon={isGroupsTab ? Building2 : Users}
-            title={isGroupsTab ? 'Sin grupos' : 'Sin clientes'}
-            description={
-              isGroupsTab
-                ? 'Todavía no hay grupos/franquicias. Creá uno para poder agregarle sucursales.'
-                : 'No hay clientes para los filtros seleccionados.'
-            }
-            action={{ label: isGroupsTab ? 'Crear el primero' : 'Crear el primero', onClick: openCreate }}
+            icon={Building2}
+            title="Sin clientes"
+            description="No hay clientes para los filtros seleccionados."
+            action={{ label: 'Crear el primero', onClick: openCreate }}
           />
         ) : (
           <div className="overflow-x-auto">
@@ -225,6 +368,7 @@ export function CustomersPage() {
                   <th className="px-4 py-3">Cliente</th>
                   <th className="px-4 py-3">Contacto</th>
                   <th className="px-4 py-3">Dirección</th>
+                  <th className="px-4 py-3 text-center">Sedes</th>
                   <th className="px-4 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
@@ -266,6 +410,16 @@ export function CustomersPage() {
                         <span className="text-gray-300">—</span>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      {Number(c.branchCount ?? 0) > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
+                          <Store className="h-3 w-3" />
+                          {c.branchCount} {c.branchCount === 1 ? 'sede' : 'sedes'}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-gray-400">Sin sedes</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <Button
                         type="button"
@@ -274,7 +428,7 @@ export function CustomersPage() {
                         onClick={() => navigate(`/admin/clientes/${c.id}`)}
                       >
                         <Eye className="h-3.5 w-3.5" />
-                        {c.isGroup ? 'Sucursales' : 'Ver'}
+                        Ver
                       </Button>
                       <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(c)}>
                         <Pencil className="h-3.5 w-3.5" />
@@ -305,7 +459,7 @@ export function CustomersPage() {
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? 'Editar cliente' : isGroupsTab ? 'Nuevo grupo' : 'Nuevo cliente'}
+        title={editing ? 'Editar cliente' : 'Nuevo cliente'}
         size="md"
         zIndex={90}
         footer={
@@ -319,7 +473,7 @@ export function CustomersPage() {
               Cancelar
             </Button>
             <Button type="button" onClick={handleSubmit} loading={saving}>
-              {editing ? 'Guardar cambios' : isGroupsTab ? 'Crear grupo' : 'Crear cliente'}
+              {editing ? 'Guardar cambios' : 'Crear cliente'}
             </Button>
           </>
         }
@@ -329,29 +483,13 @@ export function CustomersPage() {
             {error}
           </div>
         )}
-        <div className="space-y-4">
-          {/* Toggle grupo/franquicia (visible al crear; en edición queda fijo) */}
-          {!editing && (
-            <label className="flex cursor-pointer items-center justify-between rounded-lg border border-spi-border bg-surface px-3 py-2.5">
-              <span className="flex flex-col">
-                <span className="text-sm font-medium text-gray-900">Es grupo / franquicia</span>
-                <span className="text-xs text-gray-500">
-                  Agrupa varias sucursales con datos propios de facturación y entrega.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={form.isGroup}
-                onChange={(e) => setForm((f) => ({ ...f, isGroup: e.target.checked }))}
-                className="h-4 w-4 accent-spi-text"
-              />
-            </label>
-          )}
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          {/* Datos del cliente */}
           <Input
-            label="Nombre *"
+            label="Nombre del cliente *"
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            placeholder={form.isGroup ? 'Ej: Grupo Los Andes C.A.' : 'Nombre y apellido'}
+            placeholder="Ej: Grupo Los Andes C.A."
             required
             autoFocus
           />
@@ -394,11 +532,66 @@ export function CustomersPage() {
             <textarea
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-              rows={3}
+              rows={2}
               placeholder="Observaciones, preferencias, referencia..."
               className="w-full rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text placeholder-gray-400 outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20"
             />
           </div>
+
+          {editing ? (
+            /* En edición: las sedes se gestionan desde la ficha del cliente */
+            <div className="flex items-start gap-2 rounded-lg border border-spi-border bg-gray-50 dark:bg-white/5 p-3 text-sm text-gray-600">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-spi-navy" />
+              <span>
+                Las sucursales se gestionan desde la ficha del cliente —{' '}
+                <button
+                  type="button"
+                  className="font-semibold text-spi-navy underline underline-offset-2"
+                  onClick={() => {
+                    setModalOpen(false)
+                    if (editing) navigate(`/admin/clientes/${editing.id}`)
+                  }}
+                >
+                  abrir ficha
+                </button>
+                .
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="border-t border-spi-border pt-4">
+                <p className="mb-3 text-sm font-semibold text-gray-900">
+                  Sucursal principal <span className="text-red-500">*</span>
+                </p>
+                <BranchFields
+                  title="Sucursal principal"
+                  value={form.branches[0] ?? EMPTY_BRANCH}
+                  onChange={(next) => setBranch(0, next)}
+                  showRif={false}
+                />
+              </div>
+
+              {form.branches.slice(1).map((b, i) => {
+                const index = i + 1
+                return (
+                  <div key={index} className="border-t border-spi-border pt-4">
+                    <BranchFields
+                      title={`Sucursal secundaria ${index}`}
+                      value={b}
+                      onChange={(next) => setBranch(index, next)}
+                      onRemove={() => removeBranch(index)}
+                      showRif
+                    />
+                  </div>
+                )
+              })}
+
+              <Button type="button" variant="outline" className="w-full" onClick={addBranch}>
+                <Plus className="h-4 w-4" />
+                Agregar sucursal secundaria
+              </Button>
+            </>
+          )}
         </div>
       </Modal>
     </div>

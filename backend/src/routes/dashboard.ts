@@ -26,7 +26,7 @@
  *   paymentPending = órdenes con flag payment_pending = true (para cobranza).
  */
 import { Hono } from 'hono'
-import { eq, and, gte, lt, count, desc, inArray, sql, type SQL } from 'drizzle-orm'
+import { eq, and, gte, lt, count, desc, inArray, isNotNull, sql, type SQL } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { orders, customers, users, orderPayments, paymentMethods } from '../db/schema.js'
 import { authMiddleware, requireRole, requireSuperadmin, requireOperador, requireCobranza } from '../middleware/auth.js'
@@ -370,6 +370,92 @@ router.get('/cobranza', requireCobranza, async (c) => {
     },
   })
 })
+
+/* ─── GET /cobranza/activity — actividad reciente de los miembros de cobranza (solo superadmin) ───
+ * Mandato 2 (PUNTO 5): rastrear qué cobra cada miembro. Son los pagos
+ * registrados en order_payments con recordedBy = id del miembro. El superadmin
+ * los ve desde el tab "Cobranza" de /admin/equipo.
+ *
+ * Query: ?memberId=123&limit=20 (memberId opcional para filtrar UN miembro;
+ * limit default 20, máx 100).
+ * Devuelve: { success, data: { activity: [{ id, orderId, orderNumber,
+ *   customerId, customerName, amount, method, methodCode, reference, note,
+ *   paidAt, recordedById, recordedByName }], total } }
+ *
+ * NO toca los shapes de /cobranza ni /user/:id: agrega data nueva, no la cambia.
+ */
+router.get(
+  '/cobranza/activity',
+  requireSuperadmin,
+  zValidator(
+    'query',
+    z.object({
+      memberId: z.coerce.number().int().positive().optional(),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+    }),
+  ),
+  async (c) => {
+    const q = c.req.valid('query')
+    // Solo pagos con registrador conocido: un recordedBy null es un payment
+    // legacy (ej. migraciones) que no se puede atribuir a nadie.
+    const scope = q.memberId
+      ? and(isNotNull(orderPayments.recordedBy), eq(orderPayments.recordedBy, q.memberId))
+      : isNotNull(orderPayments.recordedBy)
+
+    const [rows, [totalRow]] = await Promise.all([
+      db
+        .select({
+          id: orderPayments.id,
+          orderId: orderPayments.orderId,
+          orderNumber: orders.orderNumber,
+          customerId: customers.id,
+          customerName: customers.name,
+          amount: orderPayments.amount,
+          method: paymentMethods.name,
+          methodCode: paymentMethods.code,
+          reference: orderPayments.reference,
+          note: orderPayments.note,
+          paidAt: orderPayments.paidAt,
+          recordedById: orderPayments.recordedBy,
+          recorderName: users.name,
+        })
+        .from(orderPayments)
+        .innerJoin(orders, eq(orders.id, orderPayments.orderId))
+        .innerJoin(customers, eq(customers.id, orders.customerId))
+        .innerJoin(paymentMethods, eq(paymentMethods.id, orderPayments.paymentMethodId))
+        .leftJoin(users, eq(users.id, orderPayments.recordedBy))
+        .where(scope)
+        .orderBy(desc(orderPayments.paidAt))
+        .limit(q.limit),
+      db.select({ total: count() }).from(orderPayments).where(scope),
+    ])
+
+    return c.json({
+      success: true,
+      data: {
+        activity: rows.map((r) => ({
+          id: r.id,
+          orderId: r.orderId,
+          orderNumber: r.orderNumber,
+          customerId: r.customerId,
+          customerName: r.customerName ?? `Cliente ${r.customerId}`,
+          amount: toNumber(r.amount),
+          method: r.method,
+          methodCode: r.methodCode,
+          reference: r.reference,
+          note: r.note,
+          // paidAt sale como string ISO (el servidor serializa Date → JSON).
+          paidAt: r.paidAt,
+          recordedById: r.recordedById,
+          // Quién lo registró; si el usuario fue borrado (onDelete: set null)
+          // o no existe, el LEFT JOIN devuelve null → "Miembro eliminado".
+          recordedByName: r.recorderName ?? 'Miembro eliminado',
+        })),
+        total: Number(totalRow?.total ?? 0),
+      },
+    })
+  },
+)
 
 /* ─── GET /driver — dashboard del conductor ─── */
 

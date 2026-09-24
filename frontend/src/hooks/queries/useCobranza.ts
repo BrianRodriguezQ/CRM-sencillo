@@ -41,8 +41,9 @@ export function useCobranzaDashboard() {
   return useQuery({
     queryKey: ['cobranza-dashboard'],
     queryFn: async () => {
-      const res = await api.get<{ data: CobranzaDashboardStats }>('/dashboard/cobranza')
-      return res.data.data
+      const res = await api.get<CobranzaDashboardStats>('/dashboard/cobranza')
+      // api.get<T> devuelve ApiResponse<T> = { success, data: T } en runtime → res.data ES el stats.
+      return res.data
     },
     refetchInterval: 1000 * 60, // polling cada 60s: los abonos cambian el saldo en vivo
   })

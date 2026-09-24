@@ -21,6 +21,8 @@ export interface Customer {
   isActive: boolean
   createdAt: string
   updatedAt: string
+  // Sucursales activas del cliente (badge "N sedes" en la lista unificada)
+  branchCount?: number
   // Sucursales anidadas (solo cuando el detalle pide un grupo)
   branches?: Branch[]
 }
@@ -163,6 +165,9 @@ export interface CustomerPayload {
   address?: string | null
   notes?: string | null
   isGroup?: boolean
+  // Punto 3 del mandato: al crear, el cliente se arma con su sucursal
+  // principal + secundarias opcionales en una sola llamada.
+  branches?: BranchPayload[]
 }
 
 export function useCreateCustomer() {

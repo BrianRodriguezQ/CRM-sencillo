@@ -11,8 +11,6 @@ import { NewOrderPage } from './pages/admin/NewOrderPage'
 import { OrderDetailPage } from './pages/admin/OrderDetailPage'
 import { CustomersPage } from './pages/admin/CustomersPage'
 import { CustomerDetailPage } from './pages/admin/CustomerDetailPage'
-import { DriversPage } from './pages/admin/DriversPage'
-import { SellersPage } from './pages/admin/SellersPage'
 import { TeamPage } from './pages/admin/TeamPage'
 import { TeamMemberDetailPage } from './pages/admin/TeamMemberDetailPage'
 import { PaymentMethodsPage } from './pages/admin/PaymentMethodsPage'
@@ -46,9 +44,12 @@ export default function App() {
             <Route path="clientes/:id" element={<CustomerDetailPage />} />
             {/* Ruta legacy → Equipo/Conductores (CTO 2026-09-18, decisión 1-B). */}
             <Route path="conductores" element={<Navigate to="/admin/equipo/conductores" replace />} />
+            {/* PUNTO 5 del CTO: las secciones dedicadas de conductores y operadores
+                pasan a ser SUBPESTAÑAS de Equipo. Las rutas viejas redirigen al tab
+                para no dejar dos formas de llegar a la misma data. */}
             <Route path="equipo" element={<TeamPage />} />
-            <Route path="equipo/conductores" element={<DriversPage />} />
-            <Route path="equipo/operadores" element={<SellersPage />} />
+            <Route path="equipo/conductores" element={<Navigate to="/admin/equipo?tab=conductores" replace />} />
+            <Route path="equipo/operadores" element={<Navigate to="/admin/equipo?tab=operadores" replace />} />
             <Route path="equipo/:id" element={<TeamMemberDetailPage />} />
             <Route path="metodos-pago" element={<PaymentMethodsPage />} />
             <Route path="cobranza" element={<CobranzaPage />} />

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Search,
   Users,
@@ -10,6 +10,10 @@ import {
   Crown,
   KeyRound,
   CheckCircle2,
+  Store,
+  Truck,
+  Wallet,
+  type LucideIcon,
 } from 'lucide-react'
 import {
   useUsersList,
@@ -19,8 +23,11 @@ import {
   useResetUserPassword,
   type UsersListParams,
 } from '../../hooks/queries/useTeam'
+import { useCobranzaActivity } from '../../hooks/queries/useCobranzaActivity'
 import { useAuth, type User, type UserRole } from '../../context/AuthContext'
 import { PASSWORD_HINT } from '../../lib/passwordPolicy'
+import { formatMoney } from '../../lib/utils'
+import { formatDateTime } from '../../lib/dates'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
@@ -33,7 +40,7 @@ import { Pagination } from '../../components/ui/Pagination'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   superadmin: 'Superadmin',
-  operador: 'operador',
+  operador: 'Operador',
   conductor: 'Conductor',
   cobranza: 'Cobranza',
 }
@@ -49,13 +56,45 @@ const EMPTY_FORM = {
   password: '',
 }
 
+/**
+ * SUBPESTAÑAS del apartado Equipo (PUNTO 5 del CTO 2026-09):
+ * las secciones dedicadas de conductores y operadores pasan a ser tabs acá
+ * (las rutas viejas /admin/equipo/conductores y /admin/equipo/operadores
+ * redirigen a estas), y se agrega "Cobranza" con rastreo de actividad y
+ * "Superadmins" para que el superadmin gestione a sus pares sin depender del
+ * filtro "todos los roles" de antes.
+ *
+ * El tab vive en el query param ?tab=... para poder deep-linkear desde el menú
+ * lateral, los "volver a…" de TeamMemberDetailPage y redirects de rutas viejas.
+ */
+const TEAM_TABS: Array<{
+  value: string
+  role: UserRole
+  label: string
+  icon: LucideIcon
+}> = [
+  { value: 'operadores', role: 'operador', label: 'Operadores', icon: Store },
+  { value: 'conductores', role: 'conductor', label: 'Conductores', icon: Truck },
+  { value: 'cobranza', role: 'cobranza', label: 'Cobranza', icon: Wallet },
+  { value: 'superadmins', role: 'superadmin', label: 'Superadmins', icon: Crown },
+]
+
+const TAB_VALUES = new Set(TEAM_TABS.map((t) => t.value))
+
 export function TeamPage() {
   const { user: currentUser } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Tab activo desde la URL (?tab=…). Invalid → operadores (default).
+  const rawTab = searchParams.get('tab')
+  const activeTab = (TAB_VALUES.has(rawTab ?? '')
+    ? TEAM_TABS.find((t) => t.value === rawTab)
+    : TEAM_TABS[0])!
+
   const [page, setPage] = useState(1)
   // CTO 2026-09-18: carga perezosa 5/10 (nunca listas enteras de opciones).
   const [perPage, setPerPage] = useState(10)
   const [search, setSearch] = useState('')
-  const [roleFilter, setRoleFilter] = useState<UserRole | ''>('')
   const [statusFilter, setStatusFilter] = useState<'activo' | 'inactivo' | ''>('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<User | null>(null)
@@ -68,16 +107,20 @@ export function TeamPage() {
   const [resetError, setResetError] = useState('')
   const [resetDone, setResetDone] = useState('')
 
+  // Filtro del panel de actividad (tab Cobranza): '' = todos los miembros.
+  const [activityMemberId, setActivityMemberId] = useState('')
+
   const { mutate: createUser, isPending: creating } = useCreateUser()
   const { mutate: updateUser, isPending: updating } = useUpdateUser()
   const { mutate: toggleActive, isPending: toggling } = useToggleUserActive()
   const { mutate: resetPassword, isPending: resetting } = useResetUserPassword()
 
+  // Rol FIJO del tab: la subpestaña ES el filtro por rol.
   const params: UsersListParams = {
     page,
     perPage,
+    role: activeTab.role,
     ...(search.trim() ? { search: search.trim() } : {}),
-    ...(roleFilter ? { role: roleFilter } : {}),
     ...(statusFilter ? { isActive: statusFilter === 'activo' } : {}),
   }
 
@@ -86,9 +129,28 @@ export function TeamPage() {
   const total = data?.total ?? 0
   const saving = creating || updating
 
+  // Actividad reciente de cobranza: solo se consulta en el tab Cobranza.
+  const activityEnabled = activeTab.value === 'cobranza'
+  const memberFilter = activityMemberId ? Number(activityMemberId) : undefined
+  const { data: activityData, isLoading: activityLoading } = useCobranzaActivity({
+    memberId: memberFilter,
+    limit: 20,
+    enabled: activityEnabled,
+  })
+  const activity = activityEnabled ? (activityData?.activity ?? []) : []
+
+  const setTab = (value: string) => {
+    // Cambiar de tab resetea la paginación (cada tab tiene su propio total);
+    // la búsqueda y el filtro de estado se conservan por si el superadmin está
+    // rastreando un nombre sin saber en qué rol está.
+    setPage(1)
+    setSearchParams({ tab: value })
+  }
+
   const openCreate = () => {
     setEditing(null)
-    setForm(EMPTY_FORM)
+    // El rol arranca en el del tab; igual se puede cambiar en el modal.
+    setForm({ ...EMPTY_FORM, role: activeTab.role })
     setError('')
     setModalOpen(true)
   }
@@ -207,12 +269,39 @@ export function TeamPage() {
       <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Equipo</h1>
-          <p className="text-sm text-gray-500">operadores y conductores de la plataforma.</p>
+          <p className="text-sm text-gray-500">
+            Gestioná al personal por rol: operadores, conductores, cobranza y superadmins.
+          </p>
         </div>
         <Button type="button" onClick={openCreate}>
           <Plus className="h-4 w-4" />
           Nuevo miembro
         </Button>
+      </div>
+
+      {/* Subpestañas del apartado Equipo (PUNTO 5) */}
+      <div className="mb-4 flex flex-wrap gap-1 rounded-xl border border-spi-border bg-surface p-1">
+        {TEAM_TABS.map((t) => {
+          const TabIcon = t.icon
+          const isActive = t.value === activeTab.value
+          return (
+            <button
+              key={t.value}
+              type="button"
+              aria-selected={isActive}
+              role="tab"
+              onClick={() => setTab(t.value)}
+              className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors sm:flex-none ${
+                isActive
+                  ? 'bg-spi-navy text-white'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-spi-text dark:hover:bg-white/5'
+              }`}
+            >
+              <TabIcon className="h-4 w-4" />
+              {t.label}
+            </button>
+          )
+        })}
       </div>
 
       <Card className="mb-4">
@@ -227,25 +316,10 @@ export function TeamPage() {
                   setSearch(e.target.value)
                   setPage(1)
                 }}
-                placeholder="Buscar por nombre, correo o cédula..."
+                placeholder={`Buscar ${activeTab.label.toLowerCase()} por nombre, correo o cédula...`}
                 className="w-full rounded-lg border border-spi-border bg-surface py-2 pl-9 pr-3 text-sm text-spi-text placeholder-gray-400 outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20"
               />
             </div>
-            <select
-              aria-label="Filtrar por rol"
-              value={roleFilter}
-              onChange={(e) => {
-                setRoleFilter(e.target.value as UserRole | '')
-                setPage(1)
-              }}
-              className="rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20 cursor-pointer"
-            >
-              <option value="">Todos los roles</option>
-              <option value="superadmin">Superadmin</option>
-              <option value="operador">operador</option>
-              <option value="conductor">Conductor</option>
-              <option value="cobranza">Cobranza</option>
-            </select>
             <select
               aria-label="Filtrar por estado"
               value={statusFilter}
@@ -276,8 +350,8 @@ export function TeamPage() {
         ) : items.length === 0 ? (
           <EmptyState
             icon={Users}
-            title="Sin miembros"
-            description="No hay personal para mostrar."
+            title={`Sin ${activeTab.label.toLowerCase()}`}
+            description={`No hay personal con rol ${ROLE_LABELS[activeTab.role]} para mostrar.`}
             action={{ label: 'Crear el primero', onClick: openCreate }}
           />
         ) : (
@@ -415,6 +489,105 @@ export function TeamPage() {
         )}
       </Card>
 
+      {/* Panel de actividad — SOLO en el tab Cobranza (PUNTO 5 del CTO):
+          pagos registrados por los miembros de cobranza (order_payments.recordedBy). */}
+      {activeTab.value === 'cobranza' && (
+        <Card className="mt-4">
+          <div className="p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-spi-green" />
+                <h2 className="text-lg font-semibold text-gray-900">Actividad reciente de cobranza</h2>
+              </div>
+              <select
+                aria-label="Filtrar actividad por miembro de cobranza"
+                value={activityMemberId}
+                onChange={(e) => setActivityMemberId(e.target.value)}
+                className="rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20 cursor-pointer"
+              >
+                <option value="">Todos los miembros</option>
+                {items.map((m) => (
+                  <option key={m.id} value={String(m.id)}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {activityLoading ? (
+              <LoadingState size="sm" />
+            ) : activity.length === 0 ? (
+              <EmptyState
+                icon={Wallet}
+                title="Sin pagos registrados"
+                description="Todavía no hay pagos registrados por los miembros de cobranza."
+              />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-spi-border text-left text-xs uppercase tracking-wider text-gray-500">
+                      <th className="px-4 py-3">Quién registró</th>
+                      <th className="px-4 py-3">Cliente</th>
+                      <th className="px-4 py-3">Método</th>
+                      <th className="px-4 py-3">Cuándo</th>
+                      <th className="px-4 py-3 text-right">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-spi-border">
+                    {activity.map((p) => (
+                      <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                        <td className="px-4 py-3">
+                          {p.recordedById ? (
+                            <Link
+                              to={`/admin/equipo/${p.recordedById}`}
+                              className="inline-flex items-center gap-2 font-medium text-gray-800 underline-offset-2 hover:text-spi-green hover:underline"
+                            >
+                              <Avatar name={p.recordedByName} size="xs" />
+                              {p.recordedByName}
+                            </Link>
+                          ) : (
+                            <span className="text-gray-400">{p.recordedByName}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link
+                            to={`/admin/clientes/${p.customerId}`}
+                            className="text-gray-800 underline-offset-2 hover:text-spi-green hover:underline"
+                          >
+                            {p.customerName}
+                          </Link>
+                          <p className="font-mono text-xs text-gray-400">{p.orderNumber}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-gray-700">{p.method}</span>
+                          {p.reference && (
+                            <p className="text-xs text-gray-400" title="Referencia del pago">
+                              {p.reference}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">{formatDateTime(p.paidAt)}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                          {formatMoney(p.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {!activityLoading && activity.length > 0 && (
+              <p className="mt-3 text-xs text-gray-400">
+                Últimos {activity.length} pagos registrados en el sistema
+                {activityMemberId ? ' por el miembro seleccionado' : ''}. Hacé clic en un miembro
+                para ver su panel completo (cobrado 30 días, deudores, pendientes).
+              </p>
+            )}
+          </div>
+        </Card>
+      )}
+
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -509,6 +682,10 @@ export function TeamPage() {
                 </button>
               ))}
             </div>
+            <p className="mt-1 text-xs text-gray-400">
+              Por defecto el rol del tab activo ({ROLE_LABELS[activeTab.role]}); lo podés cambiar
+              acá.
+            </p>
           </div>
           {!editing && (
             <>

@@ -89,6 +89,10 @@ export const customers = pgTable(
     isGroup: boolean('is_group').default(false).notNull(),
     // Referencia al grupo padre (para sucursales)
     parentId: integer('parent_id').references((): AnyPgColumn => customers.id, { onDelete: 'set null' }),
+    // Marca la sucursal PRINCIPAL de un grupo (una por grupo, la primera).
+    // La crea la migracion 0012 para los convertidos y el POST /customers con
+    // branches para los nuevos. Aditiva: nada la lee obligatoriamente.
+    isPrimary: boolean('is_primary').default(false).notNull(),
     // Campos de sucursal (solo para branches, isGroup=false con parentId set)
     contactPerson: varchar('contact_person', { length: 255 }),
     isBillingAddress: boolean('is_billing_address').default(false).notNull(),
