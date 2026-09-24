@@ -66,25 +66,56 @@ export function CobranzaPage() {
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
 
-  // Series mensuales de los últimos 12 meses (incluye el mes corriente).
-  // El backend arma los buckets mensuales partiendo de `desde`.
+  // ── Series de evolución: mensual (12 meses) o semanal (semanas de un mes) ──
+  // Pedido CTO 2026-09-24: poder ver las gráficas también en formato semanal
+  // dentro del mes elegido, para seguir el histórico con más detalle.
+  const [vista, setVista] = useState<'mes' | 'semana'>('mes')
   const ahora = new Date()
+  const [mesSemana, setMesSemana] = useState(
+    `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}`,
+  )
   const desde12m = new Date(ahora.getFullYear(), ahora.getMonth() - 11, 1)
-  const hastaStr = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(
+  const hoyStr = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(
     ahora.getDate(),
   ).padStart(2, '0')}`
-  const desdeStr = `${desde12m.getFullYear()}-${String(desde12m.getMonth() + 1).padStart(2, '0')}-01`
+
+  // Rango según la vista: mes → últimos 12 meses; semana → el mes elegido.
+  const [desdeStr, hastaStr] =
+    vista === 'mes'
+      ? [
+          `${desde12m.getFullYear()}-${String(desde12m.getMonth() + 1).padStart(2, '0')}-01`,
+          hoyStr,
+        ]
+      : (() => {
+          const [y, m] = mesSemana.split('-').map(Number)
+          const ultimoDia = new Date(y, m, 0).getDate()
+          return [
+            `${mesSemana}-01`,
+            `${mesSemana}-${String(ultimoDia).padStart(2, '0')}`,
+          ]
+        })()
+
   const {
     data: revenueResp,
     isLoading: revenueLoading,
     isError: revenueError,
-  } = useRevenueSeries('mes', desdeStr, hastaStr)
+  } = useRevenueSeries(vista, desdeStr, hastaStr)
   const revenueSeries = revenueResp?.series ?? []
-  // label legible ("septiembre de 2026") para los tooltips, key = bucket YYYY-MM.
+  // label legible para los tooltips: key = bucket (YYYY-MM o YYYY-Www).
   const revenueLabels =
     revenueSeries.length > 0
       ? new Map(revenueSeries.map((s: { fecha: string; label: string }) => [s.fecha, s.label]))
       : new Map<string, string>()
+  // Label corto para el eje X: "Sem 38" en vista semanal, label completo en mensual.
+  const axisLabel = (fecha: unknown) => {
+    const full = revenueLabels.get(String(fecha))
+    if (!full) return String(fecha)
+    return vista === 'semana' ? full.split(' ').slice(0, 2).join(' ') : full
+  }
+  const mesLabel =
+    vista === 'semana'
+      ? new Date(`${mesSemana}-01`).toLocaleDateString('es-VE', { month: 'long', year: 'numeric' })
+      : 'últimos 12 meses'
 
   const totals = data?.totals
   const topDebtors = data?.topDebtors ?? []
@@ -176,7 +207,45 @@ export function CobranzaPage() {
         </div>
       )}
 
-      {/* ─── Evolución Cobrado vs Por cobrar (últimos 12 meses, PUNTO 3) ─── */}
+      {/* ─── Evolución Cobrado vs Por cobrar (mensual 12m / semanal por mes, CTO 2026-09-24) ─── */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex rounded-lg border border-spi-border bg-surface p-1">
+          <button
+            type="button"
+            onClick={() => setVista('mes')}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              vista === 'mes' ? 'bg-spi-text text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Mensual
+          </button>
+          <button
+            type="button"
+            onClick={() => setVista('semana')}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              vista === 'semana' ? 'bg-spi-text text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Semanal
+          </button>
+        </div>
+        {vista === 'semana' && (
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            Mes:
+            <input
+              type="month"
+              value={mesSemana}
+              max={hoyStr.slice(0, 7)}
+              onChange={(e) => e.target.value && setMesSemana(e.target.value)}
+              className="rounded-lg border border-spi-border bg-surface px-2 py-1.5 text-sm text-spi-text outline-none focus:border-spi-text"
+            />
+          </label>
+        )}
+        <span className="text-xs text-gray-400">
+          {vista === 'mes' ? 'Montos mensuales · últimos 12 meses' : `Semanas de ${mesLabel}`}
+        </span>
+      </div>
+
       <div className="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <div className="mb-4 flex items-center gap-3">
@@ -185,7 +254,11 @@ export function CobranzaPage() {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Cobrado vs por cobrar</h2>
-              <p className="text-xs text-gray-500">Montos mensuales apilados · últimos 12 meses</p>
+              <p className="text-xs text-gray-500">
+                {vista === 'mes'
+                  ? 'Montos mensuales apilados · últimos 12 meses'
+                  : `Montos semanales apilados · ${mesLabel}`}
+              </p>
             </div>
           </div>
           {revenueLoading ? (
@@ -197,7 +270,7 @@ export function CobranzaPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={revenueSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: '#6b7280' }} />
+                  <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: '#6b7280' }} tickFormatter={axisLabel} />
                   <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
                   <Tooltip
                     formatter={(value: any) => formatMoney(Number(value))}
@@ -218,8 +291,14 @@ export function CobranzaPage() {
               <LineChartIcon className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Evolución mensual</h2>
-              <p className="text-xs text-gray-500">Comparativa cobrado · por cobrar · total</p>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {vista === 'mes' ? 'Evolución mensual' : 'Evolución semanal'}
+              </h2>
+              <p className="text-xs text-gray-500">
+                {vista === 'mes'
+                  ? 'Comparativa cobrado · por cobrar · total'
+                  : `Comparativa semanal cobrado · por cobrar · total · ${mesLabel}`}
+              </p>
             </div>
           </div>
           {revenueLoading ? (
@@ -231,7 +310,7 @@ export function CobranzaPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={revenueSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: '#6b7280' }} />
+                  <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: '#6b7280' }} tickFormatter={axisLabel} />
                   <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
                   <Tooltip
                     formatter={(value: any) => formatMoney(Number(value))}
