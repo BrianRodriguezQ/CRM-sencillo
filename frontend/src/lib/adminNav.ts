@@ -3,12 +3,10 @@ import {
   LayoutDashboard,
   Package,
   Users,
-  Truck,
   Shield,
   CreditCard,
   FileText,
   Settings,
-  Store,
   Wallet,
 } from 'lucide-react'
 
@@ -61,8 +59,6 @@ export const ADMIN_NAV_SECTIONS: NavSection[] = [
     icon: Shield,
     links: [
       { label: 'Usuarios', href: '/admin/equipo', icon: Shield },
-      { label: 'Conductores', href: '/admin/equipo/conductores', icon: Truck },
-      { label: 'operadores', href: '/admin/equipo/operadores', icon: Store },
     ],
   },
   {

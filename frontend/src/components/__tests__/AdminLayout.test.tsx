@@ -108,7 +108,10 @@ describe('AdminLayout', () => {
   it('superadmin sees all management links', () => {
     renderWithProviders(<AdminLayout />)
     expect(screen.getAllByText('Clientes').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Conductores').length).toBeGreaterThanOrEqual(1)
+    // PUNTO 5 CTO: Conductores/operadores ya NO son links del menú — son
+    // subpestañas dentro de Equipo (/admin/equipo?tab=…).
+    expect(screen.queryByText('Conductores')).toBeNull()
+    expect(screen.getAllByText('Usuarios').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('Equipo').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('Métodos de Pago').length).toBeGreaterThanOrEqual(1)
   })
