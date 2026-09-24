@@ -382,6 +382,67 @@ router.delete('/:id', async (c) => {
   }
 })
 
+/** POST /:id/convert-to-group — convertir un cliente individual en grupo/franquicia.
+ *  Queda como grupo RAÍZ (isGroup=true, parentId null); las sucursales se
+ *  agregan después con POST /:groupId/branches (Punto 1 del mandato). */
+router.post('/:id/convert-to-group', async (c) => {
+  const auth = c.get('user')
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ success: false, error: 'ID inválido' }, 400)
+  }
+
+  try {
+    const [current] = await db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        isGroup: customers.isGroup,
+        parentId: customers.parentId,
+        isActive: customers.isActive,
+      })
+      .from(customers)
+      .where(eq(customers.id, id))
+      .limit(1)
+    if (!current || !current.isActive) {
+      return c.json({ success: false, error: 'Cliente no encontrado' }, 404)
+    }
+    if (current.isGroup) {
+      return c.json({ success: false, error: 'El cliente ya es un grupo/franquicia' }, 400)
+    }
+    if (current.parentId !== null) {
+      return c.json({ success: false, error: 'No se puede convertir una sucursal en grupo' }, 400)
+    }
+
+    // Operación en transacción (patrón PGlite del proyecto, ver orders.ts):
+    // un único UPDATE con Drizzle; nada de multi-statement SQL.
+    const [customer] = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(customers)
+        .set({ isGroup: true, updatedAt: new Date() })
+        .where(eq(customers.id, id))
+        .returning()
+      return [updated]
+    })
+    if (!customer) return c.json({ success: false, error: 'Cliente no encontrado' }, 404)
+
+    await writeAuditLog({
+      userId: auth.id,
+      action: 'customer.convert_to_group',
+      metadata: { customerId: id, name: current.name },
+      ipAddress: clientIp(c),
+    })
+
+    return c.json({ success: true, data: { customer } })
+  } catch (error) {
+    console.error('Convert customer to group error:', error)
+    return c.json(
+      { success: false, error: serverErrorMessage('Error al convertir el cliente', error) },
+      500,
+    )
+  }
+})
+
 /* ═══════════════════════════════════════════════════════════════════════
  * SUCURSALES (BRANCHES) — gestión de sucursales de grupos/franquicias
  * ═══════════════════════════════════════════════════════════════════════ */

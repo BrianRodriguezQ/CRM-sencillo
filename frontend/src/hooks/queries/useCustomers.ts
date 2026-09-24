@@ -201,3 +201,19 @@ export function useCustomer(id: number | null) {
     enabled: id !== null,
   })
 }
+
+/** Convierte un cliente individual en grupo/franquicia (raíz, sin sucursales).
+ *  Después de convertir, la ficha invalida las queries de clientes y muestra
+ *  la sección de gestión de sucursales. */
+export function useConvertCustomerToGroup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.post<{ customer: Customer }>(`/customers/${id}/convert-to-group`)
+      return res.data.customer
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['customers'] })
+    },
+  })
+}

@@ -10,12 +10,15 @@ import {
   CreditCard,
   Receipt,
   AlertCircle,
+  BarChart3,
+  LineChart as LineChartIcon,
 } from 'lucide-react'
 import {
   useCobranzaDashboard,
   type CobranzaDebtor,
   type PaymentMethodStat,
 } from '../../hooks/queries/useCobranza'
+import { useRevenueSeries } from '../../hooks/queries/useDeliveryDashboard'
 import { useOrdersList } from '../../hooks/queries/useOrders'
 import { downloadFile } from '../../api/client'
 import { Card } from '../../components/ui/Card'
@@ -25,12 +28,27 @@ import { LoadingState } from '../../components/ui/LoadingState'
 import { formatMoney } from '../../lib/utils'
 import { formatDay } from '../../lib/dates'
 import { PAYMENT_STATUS_VARIANT } from '../../lib/order-status'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts'
 
 /**
  * Panel de COBRANZA — cuentas por cobrar.
  *
  * Fuentes:
  *   - GET /dashboard/cobranza → KPIs + top deudores + stats por método de pago.
+ *   - GET /dashboard/revenue-series?periodo=mes → gráficas de evolución
+ *     "Cobrado vs Por cobrar" de los últimos 12 meses (PUNTO 3 del mandato:
+ *     el backend la habilitó para superadmin + cobranza).
  *   - GET /orders?paymentStatus=pending&perPage=200 → pedidos con saldo
  *     (el backend interpreta 'pending' como pending|partial, el mismo scope
  *     que usa el dashboard de cobranza).
@@ -47,6 +65,24 @@ export function CobranzaPage() {
   })
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
+
+  // Series mensuales de los últimos 12 meses (incluye el mes corriente).
+  // El backend arma los buckets mensuales partiendo de `desde`.
+  const ahora = new Date()
+  const desde12m = new Date(ahora.getFullYear(), ahora.getMonth() - 11, 1)
+  const hastaStr = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(
+    ahora.getDate(),
+  ).padStart(2, '0')}`
+  const desdeStr = `${desde12m.getFullYear()}-${String(desde12m.getMonth() + 1).padStart(2, '0')}-01`
+  const {
+    data: revenueResp,
+    isLoading: revenueLoading,
+    isError: revenueError,
+  } = useRevenueSeries('mes', desdeStr, hastaStr)
+  const revenueSeries = revenueResp?.data?.series ?? []
+  // label legible ("septiembre de 2026") para los tooltips, key = bucket YYYY-MM.
+  const revenueLabels =
+    revenueSeries.length > 0 ? new Map(revenueSeries.map((s) => [s.fecha, s.label])) : new Map<string, string>()
 
   const totals = data?.totals
   const topDebtors = data?.topDebtors ?? []
@@ -137,6 +173,78 @@ export function CobranzaPage() {
           <span>No se pudo cargar el resumen de cobranza. Volvé a intentar en un momento.</span>
         </div>
       )}
+
+      {/* ─── Evolución Cobrado vs Por cobrar (últimos 12 meses, PUNTO 3) ─── */}
+      <div className="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-600">
+              <BarChart3 className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Cobrado vs por cobrar</h2>
+              <p className="text-xs text-gray-500">Montos mensuales apilados · últimos 12 meses</p>
+            </div>
+          </div>
+          {revenueLoading ? (
+            <LoadingState size="sm" label="Cargando evolución…" />
+          ) : revenueError || revenueSeries.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-400">Sin datos de evolución para mostrar.</p>
+          ) : (
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={revenueSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: '#6b7280' }} />
+                  <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
+                  <Tooltip
+                    formatter={(value) => formatMoney(Number(value))}
+                    labelFormatter={(fecha) => revenueLabels.get(String(fecha)) ?? String(fecha)}
+                  />
+                  <Legend />
+                  <Bar dataKey="cobrado" name="Cobrado" stackId="cobro" fill="#16a34a" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="porCobrar" name="Por cobrar" stackId="cobro" fill="#d97706" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-100 text-sky-600">
+              <LineChartIcon className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Evolución mensual</h2>
+              <p className="text-xs text-gray-500">Comparativa cobrado · por cobrar · total</p>
+            </div>
+          </div>
+          {revenueLoading ? (
+            <LoadingState size="sm" label="Cargando evolución…" />
+          ) : revenueError || revenueSeries.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-400">Sin datos de evolución para mostrar.</p>
+          ) : (
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={revenueSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: '#6b7280' }} />
+                  <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
+                  <Tooltip
+                    formatter={(value) => formatMoney(Number(value))}
+                    labelFormatter={(fecha) => revenueLabels.get(String(fecha)) ?? String(fecha)}
+                  />
+                  <Legend />
+                  <Line type="monotone" dataKey="cobrado" name="Cobrado" stroke="#16a34a" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="porCobrar" name="Por cobrar" stroke="#d97706" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="total" name="Total" stroke="#0ea5e9" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* ─── Top deudores (2/3) ─── */}

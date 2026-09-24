@@ -484,7 +484,8 @@ router.get('/', zValidator('query', listQuerySchema), async (c) => {
         updatedAt: orders.updatedAt,
         customerId: orders.customerId,
         customer: { id: customers.id, name: customers.name },
-        // Sucursal específica de un grupo/franquicia (null = orden del grupo consolidado)
+        // Sucursal puntual del grupo (las órdenes viejas de grupos pueden
+        // traer null: antes se permitía facturar "al grupo consolidado").
         branchId: orders.branchId,
         branchName: branchAlias.name,
         paymentPending: orders.paymentPending,
@@ -545,8 +546,11 @@ const orderItemSchema = z.object({
 
 const createOrderSchema = z.object({
   customerId: z.coerce.number().int().positive(),
-  // Sucursal específica (branch) — opcional; si el cliente es grupo, permite
-  // facturar individualmente a una sucursal
+  // Sucursal específica (branch). Decisión CTO (Punto 6): los pedidos SIEMPRE
+  // van a una sucursal puntual cuando el cliente es grupo/franquicia; la
+  // consolidación grupo/individual SOLO aplica a notas de entrega. La regla
+  // exacta (obligatoria para grupos, null para clientes simples) se valida
+  // abajo contra el customer, no en el schema.
   branchId: z.coerce.number().int().positive().optional().nullable(),
   paymentMethodId: z.coerce.number().int().positive(),
   amount: z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
@@ -590,10 +594,21 @@ router.post(
         return c.json({ success: false, error: 'Cliente no encontrado' }, 400)
       }
 
-      // Si viene branchId: validar que sea una sucursal activa DEL MISMO cliente.
-      // branchId solo tiene sentido cuando el cliente es grupo/franquicia.
+      // Decisión CTO (Punto 6): los pedidos SIEMPRE van a una sucursal puntual
+      // cuando el cliente es grupo/franquicia; la consolidación grupo/individual
+      // SOLO aplica a notas de entrega. Cliente simple → branchId null.
       let branchId: number | null = null
-      if (data.branchId) {
+      if (customer.isGroup) {
+        if (!data.branchId) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'Elegí la sucursal que recibe el pedido (el cliente es un grupo/franquicia)',
+            },
+            400,
+          )
+        }
         const [branch] = await db
           .select({ id: customers.id })
           .from(customers)
@@ -609,6 +624,14 @@ router.post(
           return c.json({ success: false, error: 'Sucursal no encontrada para este cliente' }, 400)
         }
         branchId = branch.id
+      } else if (data.branchId) {
+        return c.json(
+          {
+            success: false,
+            error: 'Solo los clientes grupo/franquicia admiten una sucursal de facturación',
+          },
+          400,
+        )
       }
 
       const [method] = await db

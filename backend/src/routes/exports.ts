@@ -15,7 +15,8 @@
  *   GET /exports/conductores.xlsx     — conductores + su carga de órdenes
  *   GET /exports/pedidos.xlsx         — pedidos con saldo (pending|partial)
  *   GET /exports/notas-entrega.xlsx   — MISMA query que /reports/delivery-notes-data
- *   GET /exports/cobranza.xlsx        — deudores + stats por método (2 hojas)
+ *   GET /exports/cobranza.xlsx        — deudores + stats por método + detalle
+ *                                     de pedidos pendientes (3 hojas)
  */
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
@@ -286,11 +287,14 @@ router.get('/conductores.xlsx', requireRole('superadmin'), async () => {
 })
 
 /* ═══════════════════════════════════════════════════════════════════════
- * GET /exports/pedidos.xlsx — pedidos con saldo (los que le interesan a
- * cobranza: paymentStatus pending|partial — mismo scope que el dashboard).
+ * Pedidos con saldo (paymentStatus pending|partial) + el abonado real de
+ * cada uno → base compartida para /pedidos.xlsx y la hoja "Detalle pedidos
+ * pendientes" de /cobranza.xlsx (MISMO scope que el dashboard de cobranza,
+ * cero drift).
  * ═══════════════════════════════════════════════════════════════════════ */
 
-router.get('/pedidos.xlsx', requireRole('superadmin'), async () => {
+/** Últimos pedidos con saldo pendiente, con lo ya abonado (saldo = monto − pagado). */
+async function pendingOrderRows() {
   const rows = await db
     .select({
       id: orders.id,
@@ -328,6 +332,17 @@ router.get('/pedidos.xlsx', requireRole('superadmin'), async () => {
     : []
   const paidByOrder = new Map(paidRows.map((p) => [p.orderId, toNumber(p.total)]))
 
+  return rows.map((r) => ({ ...r, paid: paidByOrder.get(r.id) ?? 0 }))
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * GET /exports/pedidos.xlsx — pedidos con saldo (los que le interesan a
+ * cobranza: paymentStatus pending|partial — mismo scope que el dashboard).
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+router.get('/pedidos.xlsx', requireRole('superadmin'), async () => {
+  const rows = await pendingOrderRows()
+
   const wb = new ExcelJS.Workbook()
   wb.creator = 'L&L System'
   addSheet(
@@ -347,7 +362,6 @@ router.get('/pedidos.xlsx', requireRole('superadmin'), async () => {
       { header: '¿Pago pendiente?', key: 'pendiente', width: 15 },
     ],
     rows.map((r) => {
-      const paid = paidByOrder.get(r.id) ?? 0
       const monto = toNumber(r.amount)
       return {
         orderNumber: r.orderNumber,
@@ -356,8 +370,8 @@ router.get('/pedidos.xlsx', requireRole('superadmin'), async () => {
         sucursal: r.branchName ?? '—',
         metodo: r.paymentMethodName,
         monto,
-        pagado: paid,
-        saldo: Math.max(0, monto - paid),
+        pagado: r.paid,
+        saldo: Math.max(0, monto - r.paid),
         estado: PAID_STATUS_LABELS[r.paymentStatus] ?? r.paymentStatus,
         conductor: r.driverName ?? '—',
         pendiente: yesNo(r.paymentPending),
@@ -487,25 +501,42 @@ router.get(
 )
 
 /* ═══════════════════════════════════════════════════════════════════════
- * GET /exports/cobranza.xlsx — resumen de cuentas por cobrar (2 hojas):
- *   - Deudores: clientes con saldo pendiente (mismo scope que topDebtors)
+ * GET /exports/cobranza.xlsx — cuentas por cobrar (3 hojas):
+ *   - Deudores: clientes con saldo pendiente + contacto completo
+ *     (teléfono, email, RIF, dirección, tipo) — scope de topDebtors
+ *   - Detalle pedidos pendientes: CADA pedido con saldo (comparte la query
+ *     de /pedidos.xlsx vía pendingOrderRows)
  *   - Por método: lo cobrado por método de pago (paymentStats)
  * ═══════════════════════════════════════════════════════════════════════ */
 
 router.get('/cobranza.xlsx', requireRole('superadmin'), async () => {
-  const [debtorRows, statsRows] = await Promise.all([
+  const [debtorRows, statsRows, pendingRows] = await Promise.all([
     db
       .select({
         customerId: orders.customerId,
         customerName: customers.name,
         customerPhone: customers.phone,
+        customerEmail: customers.email,
+        customerRif: customers.rif,
+        customerAddress: customers.address,
+        isGroup: customers.isGroup,
+        parentId: customers.parentId,
         pendingAmount: sql<string>`coalesce(sum(${orders.amount}), 0)`,
         pendingOrders: count(),
       })
       .from(orders)
       .innerJoin(customers, eq(customers.id, orders.customerId))
       .where(inArray(orders.paymentStatus, [...PENDING_STATUSES]))
-      .groupBy(orders.customerId, customers.name, customers.phone)
+      .groupBy(
+        orders.customerId,
+        customers.name,
+        customers.phone,
+        customers.email,
+        customers.rif,
+        customers.address,
+        customers.isGroup,
+        customers.parentId,
+      )
       .orderBy(desc(sql`coalesce(sum(${orders.amount}), 0)`)),
     db
       .select({
@@ -517,6 +548,7 @@ router.get('/cobranza.xlsx', requireRole('superadmin'), async () => {
       .innerJoin(paymentMethods, eq(paymentMethods.id, orderPayments.paymentMethodId))
       .groupBy(paymentMethods.name)
       .orderBy(desc(sql`coalesce(sum(${orderPayments.amount}), 0)`)),
+    pendingOrderRows(),
   ])
 
   const wb = new ExcelJS.Workbook()
@@ -528,15 +560,54 @@ router.get('/cobranza.xlsx', requireRole('superadmin'), async () => {
     [
       { header: 'Cliente', key: 'cliente', width: 32 },
       { header: 'Teléfono', key: 'telefono', width: 18 },
+      { header: 'Email', key: 'email', width: 28 },
+      { header: 'RIF', key: 'rif', width: 16 },
+      { header: 'Dirección', key: 'direccion', width: 40 },
+      { header: 'Tipo', key: 'tipo', width: 12 },
       { header: 'Monto pendiente', key: 'pendiente', width: 16 },
       { header: 'Pedidos pendientes', key: 'pedidos', width: 18 },
     ],
     debtorRows.map((r) => ({
       cliente: r.customerName,
       telefono: r.customerPhone ?? '—',
+      email: r.customerEmail ?? '—',
+      rif: r.customerRif ?? '—',
+      direccion: r.customerAddress ?? '—',
+      // Mismo criterio que clientes.xlsx: Grupo / Sucursal / Individual.
+      tipo: r.isGroup ? 'Grupo' : r.parentId ? 'Sucursal' : 'Individual',
       pendiente: toNumber(r.pendingAmount),
       pedidos: Number(r.pendingOrders),
     })),
+  )
+
+  addSheet(
+    wb,
+    'Detalle pedidos pendientes',
+    [
+      { header: 'Nº orden', key: 'orderNumber', width: 18 },
+      { header: 'Fecha', key: 'fecha', width: 14 },
+      { header: 'Cliente', key: 'cliente', width: 30 },
+      { header: 'Método pago', key: 'metodo', width: 16 },
+      { header: 'Monto', key: 'monto', width: 12 },
+      { header: 'Pagado', key: 'pagado', width: 12 },
+      { header: 'Saldo', key: 'saldo', width: 12 },
+      { header: 'Conductor', key: 'conductor', width: 24 },
+      { header: 'Estado', key: 'estado', width: 12 },
+    ],
+    pendingRows.map((r) => {
+      const monto = toNumber(r.amount)
+      return {
+        orderNumber: r.orderNumber,
+        fecha: formatDay(r.createdAt),
+        cliente: r.customerName,
+        metodo: r.paymentMethodName,
+        monto,
+        pagado: r.paid,
+        saldo: Math.max(0, monto - r.paid),
+        conductor: r.driverName ?? '—',
+        estado: PAID_STATUS_LABELS[r.paymentStatus] ?? r.paymentStatus,
+      }
+    }),
   )
 
   addSheet(

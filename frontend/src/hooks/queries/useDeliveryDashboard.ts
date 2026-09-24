@@ -51,16 +51,32 @@ export interface SuperadminDashboardStats {
   recentOrders: Order[]
 }
 
+/** Deudor del panel de cobranza (shape de GET /dashboard/cobranza y /user/:id). */
+export interface MemberDebtor {
+  customerId: number
+  customerName: string
+  customerPhone: string | null
+  customerEmail: string | null
+  pendingAmount: number
+  pendingOrders: number
+}
+
 /** Estadísticas de UN miembro del equipo (GET /dashboard/user/:id — decisión 3-B). */
 export interface MemberDashboardStats {
-  user: { id: number; name: string; role: 'operador' | 'conductor' }
+  user: { id: number; name: string; role: 'operador' | 'conductor' | 'cobranza' }
   totals: DashboardTotals
-  /** operador: pedidos sin conductor. Conductor: 0. */
+  /** operador: pedidos sin conductor. Conductor/cobranza: 0. */
   unassigned: number
-  /** Conductor: entregadas. operador: 0. */
+  /** Conductor: entregadas. operador/cobranza: 0. */
   delivered: number
   topCustomers: Array<{ id: number; name: string; totalOrders: number; totalAmount: string }>
   recentOrders: Order[]
+  /** cobranza: top deudores globales (estrategia segura, sin asignación de clientes). */
+  topDebtors?: MemberDebtor[]
+  /** cobranza: monto cobrado por ESTE miembro (order_payments.recordedBy) en 30 días. */
+  collected30d?: number
+  /** cobranza: total por cobrar global (pending|partial). */
+  pendingRevenue?: number
 }
 
 export function useDeliveryDashboard(role: UserRole | undefined) {
@@ -71,7 +87,7 @@ export function useDeliveryDashboard(role: UserRole | undefined) {
         role === 'superadmin'
           ? '/dashboard'
           : role === 'operador'
-            ? '/dashboard/seller'
+            ? '/dashboard/operador'
             : '/dashboard/driver'
       const res = await api.get<unknown>(url)
       return res.data as SuperadminDashboardStats | SellerDashboardStats | DriverDashboardStats

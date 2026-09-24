@@ -415,8 +415,73 @@ router.get('/user/:id', requireSuperadmin, async (c) => {
   if (target.role === 'superadmin') {
     return c.json({ success: false, error: 'No aplica para el superadmin' }, 400)
   }
+
+  // ─── Cobranza: panel individual del miembro (decisión 3-B ampliada, mandato 2) ───
+  // No existe tabla de asignación cobranza → clientes, así que usamos la
+  // ESTRATEGIA SEGURA: top deudores globales + pendingRevenue global (misma
+  // lógica que GET /dashboard/cobranza), y el valor REAL del miembro =
+  // collected30d (los pagos que ÉL registró en los últimos 30 días, vía
+  // order_payments.recordedBy). Limitación documentada: sin asignación de
+  // clientes, no hay forma de acotar los deudores "de este miembro".
   if (target.role === 'cobranza') {
-    return c.json({ success: false, error: 'Cobranza no tiene métrica individual por usuario' }, 400)
+    const pendingScope = inArray(orders.paymentStatus, ['pending', 'partial'])
+    const desde30d = new Date(startOfToday().getTime() - 30 * 24 * 60 * 60 * 1000)
+
+    const [totals, pendingRevenueRow, debtorRows, collected30dRow, recent] = await Promise.all([
+      totalsFor(), // global, igual que /dashboard/cobranza
+      // Ingresos pendientes totales (suma de amount donde paymentStatus pending/partial)
+      db
+        .select({ total: sql<string>`coalesce(sum(${orders.amount}), 0)` })
+        .from(orders)
+        .where(pendingScope),
+      // Top deudores GLOBALES: misma query que GET /dashboard/cobranza.
+      db
+        .select({
+          customerId: orders.customerId,
+          customerName: customers.name,
+          customerPhone: customers.phone,
+          customerEmail: customers.email,
+          pendingAmount: sql<string>`coalesce(sum(${orders.amount}), 0)`,
+          pendingOrders: count(),
+        })
+        .from(orders)
+        .innerJoin(customers, eq(customers.id, orders.customerId))
+        .where(pendingScope)
+        .groupBy(orders.customerId, customers.name, customers.phone, customers.email)
+        .orderBy(desc(sql`coalesce(sum(${orders.amount}), 0)`))
+        .limit(10),
+      // Cobros que registró ESTE miembro en los últimos 30 días
+      // (recordedBy = quien cargó el pago en el sistema).
+      db
+        .select({ total: sql<string>`coalesce(sum(${orderPayments.amount}), 0)` })
+        .from(orderPayments)
+        .where(and(eq(orderPayments.recordedBy, id), gte(orderPayments.paidAt, desde30d))),
+      recentOrdersFor(undefined, 10),
+    ])
+
+    return c.json({
+      success: true,
+      data: {
+        user: { id: target.id, name: target.name, role: target.role },
+        totals,
+        // Métricas específicas del rol (0/[] para las que no corresponden).
+        unassigned: 0,
+        delivered: 0,
+        topCustomers: [],
+        topDebtors: debtorRows.map((r) => ({
+          customerId: r.customerId,
+          customerName: r.customerName ?? `Cliente ${r.customerId}`,
+          customerPhone: r.customerPhone,
+          customerEmail: r.customerEmail,
+          pendingAmount: toNumber(r.pendingAmount),
+          pendingOrders: Number(r.pendingOrders),
+        })),
+        // Cobrado por ESTE miembro (últimos 30 días) vs total por cobrar global.
+        collected30d: toNumber(collected30dRow?.[0]?.total),
+        pendingRevenue: toNumber(pendingRevenueRow?.[0]?.total),
+        recentOrders: recent,
+      },
+    })
   }
 
   const scope: SQL =
@@ -477,17 +542,21 @@ router.get('/user/:id', requireSuperadmin, async (c) => {
   })
 })
 
-/* ─── GET /revenue-series — series temporales de revenue (solo superadmin) ───
+/* ─── GET /revenue-series — series temporales de revenue (superadmin + cobranza; mandato 3) ───
  * Query: ?periodo=semana|mes&desde=YYYY-MM-DD&hasta=YYYY-MM-DD
  * Default: últimos 8 semanas o 6 meses.
  * Devuelve: { periodo, series: [{ fecha, cobrado, porCobrar, total }, ...] }
  *
  * "Cobrado" = órdenes con paymentStatus='paid' (facturadas), bucket por deliveredAt/updatedAt
  * "Por cobrar" = órdenes con paymentStatus='pending'|'partial', bucket por createdAt
+ *
+ * Acceso: requireCobranza (= superadmin | cobranza). El panel de cobranza usa
+ * estas series para las gráficas de evolución (PUNTO 3 del mandato). Mismo
+ * patrón que reports.ts y que /dashboard/cobranza de este archivo.
  */
 router.get(
   '/revenue-series',
-  requireSuperadmin,
+  requireCobranza,
   zValidator('query', z.object({
     periodo: z.enum(['semana', 'mes']).default('semana'),
     desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),

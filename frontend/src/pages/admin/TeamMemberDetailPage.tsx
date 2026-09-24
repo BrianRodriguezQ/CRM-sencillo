@@ -7,6 +7,8 @@ import {
   TrendingUp,
   CheckCircle2,
   Truck,
+  Wallet,
+  Phone,
 } from 'lucide-react'
 import { useTeamMemberDashboard } from '../../hooks/queries/useDeliveryDashboard'
 import { useAuth } from '../../context/AuthContext'
@@ -24,7 +26,8 @@ import {
 import { formatMoney } from '../../lib/utils'
 
 /**
- * Drill-down del superadmin (decisión 3-B): panel de UN operador o conductor.
+ * Drill-down del superadmin (decisión 3-B + mandato 2): panel de UN operador,
+ * cobranza o conductor.
  * La data viene de GET /dashboard/user/:id — si el usuario es superadmin,
  * el backend responde 400 ("no se puede ver el panel de un superadmin").
  */
@@ -39,7 +42,7 @@ export function TeamMemberDetailPage() {
   const errorMsg =
     error instanceof Error
       ? error.message
-      : 'No se pudo cargar el panel del miembro. Verificá que sea un operador o conductor activo.'
+      : 'No se pudo cargar el panel del miembro. Verificá que sea un operador, cobranza o conductor activo.'
 
   if (isLoading) {
     return (
@@ -70,32 +73,66 @@ export function TeamMemberDetailPage() {
   const member = data.user
   const totals = data.totals
   const isDriver = member.role === 'conductor'
-  // Rutas agrupadas bajo Equipo (CTO 2026-09-18, decisión 1-B).
-  const backTo = isDriver ? '/admin/equipo/conductores' : '/admin/equipo/operadores'
-  const backLabel = isDriver ? 'Volver a conductores' : 'Volver a operadores'
+  const isCobranza = member.role === 'cobranza'
+  const debtors = data.topDebtors ?? []
+  // Rutas agrupadas bajo Equipo (CTO 2026-09-18, decisión 1-B). Cobranza no
+  // tiene página propia de operadores/conductores → cae a la lista general.
+  const backTo = isDriver
+    ? '/admin/equipo/conductores'
+    : isCobranza
+      ? '/admin/equipo'
+      : '/admin/equipo/operadores'
+  const backLabel = isDriver
+    ? 'Volver a conductores'
+    : isCobranza
+      ? 'Volver al equipo'
+      : 'Volver a operadores'
 
-  const statSource: Array<{ label: string; value: string; tone: string }> = [
-    {
-      label: 'Órdenes hoy',
-      value: String(totals.todayOrders),
-      tone: 'text-sky-600 bg-sky-100',
-    },
-    {
-      label: 'En progreso',
-      value: String(totals.inProgress),
-      tone: 'text-amber-600 bg-amber-100',
-    },
-    {
-      label: 'Entregadas',
-      value: String(totals.delivered),
-      tone: 'text-green-600 bg-green-100',
-    },
-    {
-      label: 'Canceladas',
-      value: String(totals.cancelled),
-      tone: 'text-red-600 bg-red-100',
-    },
-  ]
+  const statSource: Array<{ label: string; value: string; tone: string }> = isCobranza
+    ? [
+        {
+          label: 'Cobrado (30 días)',
+          value: formatMoney(data.collected30d ?? 0),
+          tone: 'text-green-600 bg-green-100',
+        },
+        {
+          label: 'Por cobrar',
+          value: formatMoney(data.pendingRevenue ?? 0),
+          tone: 'text-amber-600 bg-amber-100',
+        },
+        {
+          label: 'Deudores',
+          value: String(debtors.length),
+          tone: 'text-violet-600 bg-violet-100',
+        },
+        {
+          label: 'Pendientes de cobro',
+          value: String(totals.pendingPayments),
+          tone: 'text-sky-600 bg-sky-100',
+        },
+      ]
+    : [
+        {
+          label: 'Órdenes hoy',
+          value: String(totals.todayOrders),
+          tone: 'text-sky-600 bg-sky-100',
+        },
+        {
+          label: 'En progreso',
+          value: String(totals.inProgress),
+          tone: 'text-amber-600 bg-amber-100',
+        },
+        {
+          label: 'Entregadas',
+          value: String(totals.delivered),
+          tone: 'text-green-600 bg-green-100',
+        },
+        {
+          label: 'Canceladas',
+          value: String(totals.cancelled),
+          tone: 'text-red-600 bg-red-100',
+        },
+      ]
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -121,7 +158,12 @@ export function TeamMemberDetailPage() {
                 <span className="inline-flex items-center gap-1 rounded-full bg-spi-gold/20 px-2.5 py-0.5 text-xs font-medium text-spi-gold">
                   {member.role === 'conductor' && <Truck className="h-3 w-3" />}
                   {member.role === 'operador' && <Package className="h-3 w-3" />}
-                  {member.role === 'operador' ? 'operador' : 'Conductor'}
+                  {member.role === 'cobranza' && <Wallet className="h-3 w-3" />}
+                  {member.role === 'operador'
+                    ? 'operador'
+                    : member.role === 'cobranza'
+                      ? 'Cobranza'
+                      : 'Conductor'}
                 </span>
                 {currentUser?.id === member.id && (
                   <span className="text-xs text-white/50">(sos vos)</span>
@@ -147,30 +189,42 @@ export function TeamMemberDetailPage() {
           <div className="mb-2 flex items-center gap-2">
             {isDriver ? (
               <CheckCircle2 className="h-4 w-4 text-spi-green" />
+            ) : isCobranza ? (
+              <Users className="h-4 w-4 text-violet-600" />
             ) : (
               <AlertTriangle className="h-4 w-4 text-amber-500" />
             )}
             <p className="text-sm font-semibold text-gray-900">
-              {isDriver ? 'Entregadas' : 'Pedidos sin conductor'}
+              {isDriver ? 'Entregadas' : isCobranza ? 'Deudores top' : 'Pedidos sin conductor'}
             </p>
           </div>
           <p className="text-2xl font-bold text-gray-900">
-            {isDriver ? data.delivered : data.unassigned}
+            {isDriver ? data.delivered : isCobranza ? debtors.length : data.unassigned}
           </p>
           <p className="text-xs text-gray-400">
             {isDriver
               ? 'Entregas confirmadas del conductor.'
-              : 'Pedidos en Inicio esperando asignación (decisión 1-A).'}
+              : isCobranza
+                ? 'Clientes con saldo pendiente (top global).'
+                : 'Pedidos en Inicio esperando asignación (decisión 1-A).'}
           </p>
         </Card>
         <Card>
           <div className="mb-2 flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-spi-green" />
-            <p className="text-sm font-semibold text-gray-900">Ingresos cobrados</p>
+            <p className="text-sm font-semibold text-gray-900">
+              {isCobranza ? 'Cobrado (30 días)' : 'Ingresos cobrados'}
+            </p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{formatMoney(totals.totalRevenue)}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {formatMoney(isCobranza ? (data.collected30d ?? 0) : totals.totalRevenue)}
+          </p>
           <p className="text-xs text-gray-400">
-            {isDriver ? 'Pagos de sus entregas (decisión 2-A).' : 'Pagos de sus pedidos.'}
+            {isCobranza
+              ? 'Pagos que registró este miembro (order_payments) en los últimos 30 días.'
+              : isDriver
+                ? 'Pagos de sus entregas (decisión 2-A).'
+                : 'Pagos de sus pedidos.'}
           </p>
         </Card>
         <Card>
@@ -178,13 +232,19 @@ export function TeamMemberDetailPage() {
             <AlertTriangle className="h-4 w-4 text-amber-500" />
             <p className="text-sm font-semibold text-gray-900">Pendiente de cobro</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{formatMoney(totals.pendingRevenue)}</p>
-          <p className="text-xs text-gray-400">Pedidos en metálico/otros sin saldar todavía.</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {formatMoney(isCobranza ? (data.pendingRevenue ?? totals.pendingRevenue) : totals.pendingRevenue)}
+          </p>
+          <p className="text-xs text-gray-400">
+            {isCobranza
+              ? 'Total global con saldo (pending/partial). Sin asignación de clientes a cobranza.'
+              : 'Pedidos en metálico/otros sin saldar todavía.'}
+          </p>
         </Card>
       </div>
 
       {/* Top clientes (solo operador) */}
-      {!isDriver && (
+      {member.role === 'operador' && (
         <Card className="mt-4">
           <h2 className="mb-3 text-lg font-semibold text-gray-900">Top clientes</h2>
           {data.topCustomers.length === 0 ? (
@@ -202,6 +262,44 @@ export function TeamMemberDetailPage() {
                   <span className="text-gray-400">
                     {c.totalOrders} órdenes · {formatMoney(c.totalAmount)}
                   </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+
+      {/* Top deudores (solo cobranza) — mismos datos que CobranzaPage (globales). */}
+      {isCobranza && (
+        <Card className="mt-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Users className="h-4 w-4 text-violet-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Top deudores</h2>
+          </div>
+          {debtors.length === 0 ? (
+            <p className="py-4 text-center text-sm text-gray-400">Sin deudores pendientes 🎉</p>
+          ) : (
+            <ul className="space-y-2">
+              {debtors.map((d) => (
+                <li key={d.customerId} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0">
+                    <Link
+                      to={`/admin/clientes/${d.customerId}`}
+                      className="font-medium text-gray-800 underline-offset-2 hover:text-spi-green hover:underline"
+                    >
+                      {d.customerName}
+                    </Link>
+                    <p className="flex items-center gap-1 text-xs text-gray-400">
+                      <Phone className="h-3 w-3" />
+                      {d.customerPhone ?? 'Sin teléfono'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-amber-600">{formatMoney(d.pendingAmount)}</p>
+                    <p className="text-xs text-gray-400">
+                      {d.pendingOrders} {d.pendingOrders === 1 ? 'pedido' : 'pedidos'}
+                    </p>
+                  </div>
                 </li>
               ))}
             </ul>

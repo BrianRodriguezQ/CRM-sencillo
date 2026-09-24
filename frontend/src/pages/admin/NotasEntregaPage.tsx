@@ -150,9 +150,10 @@ export function NotasEntregaPage() {
   const urlFecha = searchParams.get('fecha')
 
   const [clienteId, setClienteId] = useState(urlClienteId)
-  // Typeahead lazy: el dropdown solo muestra resultados de la búsqueda (10).
-  // El nombre elegido se persiste aparte porque el cliente puede no estar
-  // entre los resultados actuales (CTO 2026-09-18: nunca listas enteras).
+  // Typeahead lazy: el dropdown lista los primeros 10 clientes al hacer focus
+  // (y filtra por la búsqueda cuando escribís). El nombre elegido se persiste
+  // aparte porque el cliente puede no estar entre los resultados actuales
+  // (CTO 2026-09-18: nunca listas enteras).
   const [customerQuery, setCustomerQuery] = useState(urlNombre)
   const [customerName, setCustomerName] = useState(urlNombre)
   const [customerIsGroup, setCustomerIsGroup] = useState(false)
@@ -409,26 +410,38 @@ export function NotasEntregaPage() {
 
               {customerOpen && (
                 <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-spi-border bg-surface shadow-lg">
-                  {!customerQuery.trim() ? (
-                    <p className="px-4 py-3 text-sm text-gray-400">Escribí para buscar un cliente.</p>
+                  {loadingCustomers && customers.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-gray-400">Cargando clientes...</p>
                   ) : customers.length === 0 ? (
-                    <p className="px-4 py-3 text-sm text-gray-400">Sin clientes que coincidan.</p>
+                    <p className="px-4 py-3 text-sm text-gray-400">
+                      {customerQuery.trim() ? 'Sin clientes que coincidan.' : 'No hay clientes registrados.'}
+                    </p>
                   ) : (
-                    customers.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onMouseDown={(e) => {
-                          // onMouseDown corre antes que el onBlur del input.
-                          e.preventDefault()
-                          pickCustomer(c.id, c.name, Boolean(c.isGroup))
-                        }}
-                        className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm text-gray-800 hover:bg-gray-50 dark:hover:bg-white/5"
-                      >
-                        <span>{c.name}</span>
-                        {c.phone && <span className="text-xs text-gray-400">{c.phone}</span>}
-                      </button>
-                    ))
+                    <>
+                      {/* Sin búsqueda: el listado general ya está cargado por
+                          useCustomersList({ perPage: 10 }) → mostramos los
+                          primeros 10 ordenados por nombre apenas se hace focus. */}
+                      {!customerQuery.trim() && (
+                        <p className="border-b border-spi-border px-4 py-2 text-xs text-gray-400">
+                          Primeros 10 clientes — escribí para filtrar.
+                        </p>
+                      )}
+                      {customers.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            // onMouseDown corre antes que el onBlur del input.
+                            e.preventDefault()
+                            pickCustomer(c.id, c.name, Boolean(c.isGroup))
+                          }}
+                          className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm text-gray-800 hover:bg-gray-50 dark:hover:bg-white/5"
+                        >
+                          <span>{c.name}</span>
+                          {c.phone && <span className="text-xs text-gray-400">{c.phone}</span>}
+                        </button>
+                      ))}
+                    </>
                   )}
                 </div>
               )}

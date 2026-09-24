@@ -150,6 +150,12 @@ export function NewOrderPage() {
       setError('Seleccioná un cliente')
       return false
     }
+    // Punto 6 (CTO): el pedido de un grupo/franquicia SIEMPRE va a una
+    // sucursal puntual — no existe más la factura "al grupo consolidado".
+    if (selectedCustomer.isGroup && selectedBranchId === '') {
+      setError('Elegí la sucursal que recibe el pedido (el cliente es un grupo/franquicia)')
+      return false
+    }
     if (!paymentMethodId) {
       setError('Seleccioná un método de pago')
       return false
@@ -175,6 +181,9 @@ export function NewOrderPage() {
   const buildPayload = () => {
     if (!selectedCustomer || !paymentMethodId) return null
 
+    // Defensa en profundidad (Punto 6): grupo sin sucursal elegida = payload inválido.
+    if (selectedCustomer.isGroup && selectedBranchId === '') return null
+
     const validItems: OrderItemInput[] = draftItems
       .filter((it) => it.productName.trim() !== '')
       .map((it) => ({
@@ -185,7 +194,8 @@ export function NewOrderPage() {
 
     return {
       customerId: selectedCustomer.id,
-      // Sucursal puntual del grupo (si el cliente es franquicia y eligió una).
+      // Sucursal puntual del grupo (obligatoria para grupos/franquicias);
+      // clientes simples van sin branch (null).
       branchId: selectedBranchId === '' ? null : selectedBranchId,
       paymentMethodId,
       autoAssignDriver: autoAssign,
@@ -331,15 +341,17 @@ export function NewOrderPage() {
           )}
         </div>
 
-        {/* Sucursal — solo si el cliente es grupo/franquicia */}
+        {/* Sucursal — OBLIGATORIA si el cliente es grupo/franquicia (decisión
+            CTO Punto 6: los pedidos SIEMPRE van a una sucursal puntual; la
+            consolidación grupo/individual SOLO aplica a notas de entrega) */}
         {selectedCustomer?.isGroup && (
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-700">
-              Sucursal de facturación
+              Sucursal de facturación <span className="text-red-500">*</span>
             </label>
             <p className="text-xs text-gray-400 mb-1.5">
-              Elegí una sucursal puntual o dejá «Grupo (consolidado)» para facturar a toda la
-              franquicia.
+              Elegí la sucursal que recibe el pedido: cada orden se factura a una sucursal puntual
+              del grupo.
             </p>
             <select
               value={selectedBranchId}
@@ -348,7 +360,7 @@ export function NewOrderPage() {
               }
               className="w-full rounded-lg border border-spi-border bg-surface px-3 py-2 text-sm text-spi-text outline-none focus:border-spi-text focus:ring-2 focus:ring-spi-text/20"
             >
-              <option value="">Grupo (consolidado)</option>
+              <option value="">Seleccioná una sucursal...</option>
               {branches
                 .filter((b) => b.isActive)
                 .map((b) => (
@@ -617,7 +629,7 @@ export function NewOrderPage() {
                     <Building2 className="h-3 w-3" />
                     {selectedBranchId
                       ? branches.find((b) => b.id === selectedBranchId)?.name ?? 'Sucursal'
-                      : 'Grupo (consolidado)'}
+                      : 'Seleccioná una sucursal'}
                   </p>
                 )}
               </div>

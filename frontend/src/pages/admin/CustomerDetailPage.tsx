@@ -25,6 +25,7 @@ import {
   useCreateBranch,
   useUpdateBranch,
   useDeleteBranch,
+  useConvertCustomerToGroup,
   type Branch,
   type BranchPayload,
 } from '../../hooks/queries/useCustomers'
@@ -167,6 +168,9 @@ export function CustomerDetailPage() {
   const { mutate: createBranch, isPending: creatingBranch } = useCreateBranch()
   const { mutate: updateBranch, isPending: updatingBranch } = useUpdateBranch()
   const { mutate: deleteBranch } = useDeleteBranch()
+  // Punto 1 (mandato): convertir un cliente individual en grupo/franquicia.
+  const { mutate: convertToGroup, isPending: convertingToGroup } = useConvertCustomerToGroup()
+  const [convertError, setConvertError] = useState('')
 
   const [branchModalOpen, setBranchModalOpen] = useState(false)
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null)
@@ -253,6 +257,26 @@ export function CustomerDetailPage() {
     deleteBranch(b.id)
   }
 
+  // Convierte un cliente individual en grupo/franquicia. Tras el éxito, la
+  // query de detalle se invalida y aparece la sección de sucursales.
+  const handleConvertToGroup = () => {
+    if (!customerId || !customer) return
+    if (
+      !window.confirm(
+        `¿Convertir a "${customer.name}" en grupo / franquicia?\n\n` +
+          'Vas a poder agregarle sucursales desde esta ficha. Los próximos pedidos ' +
+          'deberán facturarse a una sucursal puntual del grupo.',
+      )
+    ) {
+      return
+    }
+    setConvertError('')
+    convertToGroup(customerId, {
+      onError: (err) =>
+        setConvertError(err instanceof Error ? err.message : 'Error al convertir el cliente'),
+    })
+  }
+
   const deliveredOrders = useMemo(() => orders.filter((o) => o.orderStatus === 'delivered'), [orders])
   const totalDelivered = useMemo(
     () => deliveredOrders.reduce((acc, o) => acc + (Number(o.amount) || 0), 0),
@@ -330,6 +354,19 @@ export function CustomerDetailPage() {
               >
                 {customer.isActive ? 'Activo' : 'Inactivo'}
               </span>
+              {!isGroup && !customer.parentId && customer.isActive && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleConvertToGroup}
+                  loading={convertingToGroup}
+                  title="Convierte este cliente en un grupo/franquicia con sucursales"
+                >
+                  <Building2 className="h-3.5 w-3.5" />
+                  Convertir en grupo / franquicia
+                </Button>
+              )}
             </div>
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-600">
               {customer.rif && (
@@ -360,6 +397,12 @@ export function CustomerDetailPage() {
               <p className="mt-2 text-sm text-gray-500 border-l-2 border-spi-gold pl-3">
                 {customer.notes}
               </p>
+            )}
+            {convertError && (
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{convertError}</span>
+              </div>
             )}
           </div>
         </div>
@@ -404,8 +447,8 @@ export function CustomerDetailPage() {
             </Button>
           </div>
           <p className="text-sm text-gray-500 mb-3">
-            Cada sucursal tiene su propio contacto, dirección y flags de facturación/entrega. Las
-            órdenes pueden facturarse a una sucursal puntual o al grupo consolidado.
+            Cada sucursal tiene su propio contacto, dirección y flags de facturación/entrega. Los
+            pedidos de este grupo se facturan SIEMPRE a una sucursal puntual (Punto 6 del mandato).
           </p>
 
           <Card>
