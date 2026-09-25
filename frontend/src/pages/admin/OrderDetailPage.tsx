@@ -411,9 +411,9 @@ export function OrderDetailPage() {
             {/* Botón contextual del conductor (v2) */}
             {driverAction && (() => {
               const isDelivered = driverAction.to === 'delivered'
-              // Regla 1-A (CTO): no se puede marcar entregada una orden no pagada.
-              // El conductor registra el pago (efectivo incluido) antes de cerrar.
-              const paymentPending = isDelivered && order.paymentStatus !== 'paid'
+              // CTO 2026-09-24: el conductor NO valida pagos. Puede marcar
+              // entregada aunque haya saldo; el pedido queda en pendiente y
+              // lo cobra Cobranza después vía "Registrar pago".
               return (
                 <div className="mt-6">
                   <Button
@@ -422,19 +422,18 @@ export function OrderDetailPage() {
                     size="lg"
                     className="w-full"
                     loading={updatingStatus}
-                    disabled={paymentPending}
                     onClick={() => handleAdvance(driverAction.to)}
                   >
                     <driverAction.icon className="h-5 w-5" />
                     {driverAction.label}
                   </Button>
                   <p className="mt-2 text-center text-xs text-spi-gold dark:text-gray-500">
-                    {paymentPending
-                      ? 'El pedido no está pagado todavía. Registrá el pago en la sección Pagos y recién ahí cerrá la entrega.'
-                      : driverAction.to === 'accepted'
-                        ? 'Confirmá que vas a hacer la entrega.'
-                        : driverAction.to === 'in_transit'
-                          ? 'Confirmá que estás en camino con el pedido.'
+                    {driverAction.to === 'accepted'
+                      ? 'Confirmá que vas a hacer la entrega.'
+                      : driverAction.to === 'in_transit'
+                        ? 'Confirmá que estás en camino con el pedido.'
+                        : isDelivered && order.paymentStatus !== 'paid'
+                          ? 'Confirmá que entregaste el pedido. El cobro queda pendiente; lo registra Cobranza.'
                           : 'Confirmá que entregaste el pedido.'}
                   </p>
                 </div>
@@ -473,10 +472,9 @@ export function OrderDetailPage() {
 
             {(order.payments?.length ?? 0) === 0 ? (
               <p className="py-4 text-center text-sm text-gray-400">
-                Sin pagos registrados. El saldo se cobra antes de entregar
-                {order.paymentMethod?.code === 'efectivo'
-                  ? ' (efectivo: se cobra en la entrega automáticamente).'
-                  : '.'}
+                {order.orderStatus === 'delivered'
+                  ? 'Sin pagos registrados. La entrega quedó con cobro pendiente; registrá el cobro acá.'
+                  : 'Sin pagos registrados. Al entregar, el pedido queda en cobro pendiente y Cobranza registra el pago después.'}
               </p>
             ) : (
               <ul className="divide-y divide-spi-border">

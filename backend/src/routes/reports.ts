@@ -22,11 +22,11 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
-import { and, asc, eq, gte, lt, inArray, type SQL } from 'drizzle-orm'
+import { and, asc, eq, gte, lt, inArray, sql, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import QRCode from 'qrcode'
 import { db } from '../db/index.js'
-import { users, customers, paymentMethods, orders, orderItems } from '../db/schema.js'
+import { users, customers, paymentMethods, orders, orderItems, orderPayments } from '../db/schema.js'
 import { authMiddleware, requireRole } from '../middleware/auth.js'
 import { renderPdf, type PdfDocDefinition } from '../utils/pdf.js'
 import { signQrToken } from '../utils/qr-token.js'
@@ -163,6 +163,8 @@ interface DeliveryOrderDto {
   vendedor: string | null
   conductor: string | null
   metodoPago: string | null
+  paymentStatus: string | null
+  saldo: number
   total: number
   items: DeliveryItemDto[]
 }
@@ -213,6 +215,22 @@ interface ClientGroup {
   orders: DeliveryRow[]
 }
 
+/** Label legible + color para el estado de pago de un pedido entregado. */
+export function paymentLabel(status: string | null): { text: string; color: string } {
+  switch (status) {
+    case 'paid':
+      return { text: 'Pagado', color: '#16a34a' }
+    case 'partial':
+      return { text: 'Parcial', color: '#d97706' }
+    case 'pending':
+      return { text: 'Pendiente', color: '#dc2626' }
+    case 'cancelled':
+      return { text: 'Cancelada', color: '#9ca3af' }
+    default:
+      return { text: status ?? '—', color: '#6b7280' }
+  }
+}
+
 export async function buildDeliveryGroups(params: {
   clienteId?: number
   branchId?: number
@@ -222,6 +240,7 @@ export async function buildDeliveryGroups(params: {
 }): Promise<{
   rows: DeliveryRow[]
   itemsByOrder: Map<number, DeliveryItemRow[]>
+  paidByOrder: Map<number, number>
   clientGroups: ClientGroup[]
   desde: Date
   hasta: Date
@@ -279,7 +298,7 @@ export async function buildDeliveryGroups(params: {
     .orderBy(asc(customers.name), asc(orders.deliveredAt))) as DeliveryRow[]
 
   if (rows.length === 0) {
-    return { rows, itemsByOrder: new Map(), clientGroups: [], desde, hasta, dto: null }
+    return { rows, itemsByOrder: new Map(), paidByOrder: new Map(), clientGroups: [], desde, hasta, dto: null }
   }
 
   // Ítems de todas las órdenes del reporte (una sola query).
@@ -301,6 +320,19 @@ export async function buildDeliveryGroups(params: {
     if (bucket) bucket.push(it)
     else itemsByOrder.set(it.orderId, [it])
   }
+
+  // Abonos por orden: para el saldo pendiente de cada pedido entregado.
+  const paidRows = (await db
+    .select({
+      orderId: orderPayments.orderId,
+      paid: sql<string>`coalesce(sum(${orderPayments.amount}), 0)`,
+    })
+    .from(orderPayments)
+    .where(inArray(orderPayments.orderId, orderIds))
+    .groupBy(orderPayments.orderId)) as { orderId: number; paid: string }[]
+  const paidByOrder = new Map<number, number>(
+    paidRows.map((r) => [r.orderId, Number.parseFloat(String(r.paid ?? '0'))]),
+  )
 
   // Agrupar por cliente.
   const groups = new Map<number, ClientGroup>()
@@ -327,6 +359,10 @@ export async function buildDeliveryGroups(params: {
     const ordenes: DeliveryOrderDto[] = g.orders.map((r) => {
       const total = Number.parseFloat(String(r.amount ?? '0'))
       totalPeriodo += total
+      const paid = paidByOrder.get(r.id) ?? 0
+      // Coherente con el estado: 'paid' nunca muestra saldo (datos viejos pueden
+      // tener paymentStatus='paid' sin abonos registrados).
+      const saldo = r.paymentStatus === 'paid' ? 0 : Math.max(0, total - paid)
       const orderItemsRows = itemsByOrder.get(r.id) ?? []
       return {
         id: r.id,
@@ -335,6 +371,8 @@ export async function buildDeliveryGroups(params: {
         vendedor: r.sellerName ?? null,
         conductor: r.driverName ?? null,
         metodoPago: r.paymentMethodName ?? null,
+        paymentStatus: r.paymentStatus ?? null,
+        saldo,
         total,
         items: orderItemsRows.map((it) => ({
           producto: it.productName,
@@ -360,7 +398,7 @@ export async function buildDeliveryGroups(params: {
     grupos,
   }
 
-  return { rows, itemsByOrder, clientGroups, desde, hasta, dto }
+  return { rows, itemsByOrder, paidByOrder, clientGroups, desde, hasta, dto }
 }
 
 function noDataMessage(clienteId?: number): string {
@@ -454,6 +492,7 @@ router.get(
           hCell('Conductor'),
           hCell('Contenido'),
           hCell('Total', 'right'),
+          hCell('Pago', 'center'),
           hCell('QR', 'center'),
         ],
       ]
@@ -496,6 +535,13 @@ router.get(
           { text: order.driverName ?? '—', fontSize: 8.5, color: '#374151' },
           { stack: itemLines, margin: [0, 1, 0, 1] },
           { text: money(amount), fontSize: 8.5, bold: true, alignment: 'right', color: '#111827' },
+          {
+            text: paymentLabel(String(order.paymentStatus ?? '')).text,
+            fontSize: 8,
+            bold: true,
+            alignment: 'center',
+            color: paymentLabel(String(order.paymentStatus ?? '')).color,
+          },
           { image: qr, width: 34, height: 34, alignment: 'center' },
         ])
       }
@@ -503,7 +549,7 @@ router.get(
       content.push({
         table: {
           headerRows: 1,
-          widths: ['auto', 'auto', 'auto', 'auto', '*', 'auto', 30],
+          widths: ['auto', 'auto', 'auto', 'auto', '*', 'auto', 'auto', 30],
           body,
         },
         layout: 'lightHorizontalLines',

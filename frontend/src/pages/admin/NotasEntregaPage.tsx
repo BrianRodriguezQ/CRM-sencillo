@@ -34,6 +34,8 @@ interface DeliveryNoteOrder {
   operador: string | null
   conductor: string | null
   metodoPago: string | null
+  paymentStatus: string | null
+  saldo: number
   total: number
   items: DeliveryNoteItem[]
 }
@@ -137,6 +139,20 @@ function periodPreview(periodo: Periodo, fechaISO: string): string {
 
   const monthName = base.toLocaleDateString('es-VE', { month: 'long', year: 'numeric' })
   return `Entregas de ${monthName.charAt(0).toUpperCase()}${monthName.slice(1)}`
+}
+
+/** Badge legible del estado de pago en la vista previa web. */
+function paymentBadge(status: string | null): { label: string; className: string } {
+  switch (status) {
+    case 'paid':
+      return { label: 'Pagado', className: 'bg-green-100 text-green-700' }
+    case 'partial':
+      return { label: 'Parcial', className: 'bg-amber-100 text-amber-700' }
+    case 'pending':
+      return { label: 'Pendiente', className: 'bg-red-100 text-red-700' }
+    default:
+      return { label: status ?? '—', className: 'bg-gray-100 text-gray-600' }
+  }
 }
 
 export function NotasEntregaPage() {
@@ -457,6 +473,60 @@ export function NotasEntregaPage() {
             </p>
           </div>
 
+          {/* Alcance de la nota: grupo consolidado o sucursal puntual (CTO 2026-09-24).
+              Aparece cuando el cliente marcado es un grupo con sucursales. */}
+          {customerIsGroup && branches.length > 0 && (
+            <div>
+              <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-spi-text">
+                <Building2 className="h-4 w-4 text-gray-400" />
+                Alcance de la nota
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-spi-text">
+                  <input
+                    type="radio"
+                    name="nota-alcance"
+                    checked={branchId === ''}
+                    onChange={() => setBranchId('')}
+                    className="accent-spi-navy"
+                  />
+                  Nota general — todo el grupo ({customerName})
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2 text-sm text-spi-text">
+                    <input
+                      type="radio"
+                      name="nota-alcance"
+                      checked={branchId !== ''}
+                      onChange={() => setBranchId(String(branches[0]?.id ?? ''))}
+                      className="accent-spi-navy"
+                    />
+                    Sucursal puntual
+                  </label>
+                  {branchId !== '' && (
+                    <select
+                      value={branchId}
+                      onChange={(e) => setBranchId(e.target.value)}
+                      className={SELECT_CLASS + ' max-w-xs'}
+                      aria-label="Sucursal"
+                    >
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">
+                {branchId
+                  ? 'La nota incluye solo los pedidos entregados a esa sucursal, con su cuenta y saldo.'
+                  : 'La nota consolida los pedidos de todas las sucursales del grupo.'}
+              </p>
+            </div>
+          )}
+
           {/* Período */}
           <div>
             <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-spi-text">
@@ -654,12 +724,24 @@ export function NotasEntregaPage() {
                     <div key={o.id} className="p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="font-mono text-xs text-gray-500">{o.numero}</p>
-                        <p className="text-sm font-semibold text-gray-900">{formatMoney(o.total)}</p>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${paymentBadge(o.paymentStatus).className}`}
+                          >
+                            {paymentBadge(o.paymentStatus).label}
+                          </span>
+                          <p className="text-sm font-semibold text-gray-900">{formatMoney(o.total)}</p>
+                        </div>
                       </div>
                       <p className="mt-0.5 text-xs text-gray-400">
                         Entregado {o.entregadoEn ? new Date(o.entregadoEn).toLocaleDateString('es-AR', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'} ·{' '}
                         {o.metodoPago ?? '—'} · {o.operador ?? '—'} · {o.conductor ?? '—'}
                       </p>
+                      {o.saldo > 0.005 && (
+                        <p className="mt-0.5 text-xs font-semibold text-red-600">
+                          Saldo pendiente: {formatMoney(o.saldo)}
+                        </p>
+                      )}
                       {o.items.length > 0 && (
                         <ul className="mt-2">
                           {o.items.map((it, idx) => (

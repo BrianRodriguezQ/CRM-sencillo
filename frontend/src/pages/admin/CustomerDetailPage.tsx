@@ -116,6 +116,8 @@ interface DeliveryNoteOrder {
   entregadoEn: string | null
   operador: string | null
   metodoPago: string | null
+  paymentStatus: string | null
+  saldo: number
   total: number
   items: DeliveryNoteItem[]
 }
@@ -132,6 +134,20 @@ interface DeliveryNoteData {
   totalPedidos: number
   totalGeneral: number
   grupos: DeliveryNoteGroup[]
+}
+
+/** Badge legible del estado de pago en la vista previa web. */
+function paymentBadge(status: string | null): { label: string; className: string } {
+  switch (status) {
+    case 'paid':
+      return { label: 'Pagado', className: 'bg-green-100 text-green-700' }
+    case 'partial':
+      return { label: 'Parcial', className: 'bg-amber-100 text-amber-700' }
+    case 'pending':
+      return { label: 'Pendiente', className: 'bg-red-100 text-red-700' }
+    default:
+      return { label: status ?? '—', className: 'bg-gray-100 text-gray-600' }
+  }
 }
 
 /* ─── Página ─── */
@@ -694,12 +710,24 @@ export function CustomerDetailPage() {
                   <div key={o.id} className="rounded-lg border border-spi-border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-mono text-xs text-gray-500">{o.numero}</p>
-                      <p className="text-sm font-semibold text-gray-900">{formatMoney(o.total)}</p>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${paymentBadge(o.paymentStatus).className}`}
+                        >
+                          {paymentBadge(o.paymentStatus).label}
+                        </span>
+                        <p className="text-sm font-semibold text-gray-900">{formatMoney(o.total)}</p>
+                      </div>
                     </div>
                     <p className="mt-0.5 text-xs text-gray-400">
                       Entregado {o.entregadoEn ? formatDate(o.entregadoEn) : '—'} · {o.metodoPago ?? '—'} ·{' '}
                       {o.operador ?? '—'}
                     </p>
+                    {o.saldo > 0.005 && (
+                      <p className="mt-0.5 text-xs font-semibold text-red-600">
+                        Saldo pendiente: {formatMoney(o.saldo)}
+                      </p>
+                    )}
                     {o.items.length > 0 && (
                       <ul className="mt-2 divide-y divide-spi-border">
                         {o.items.map((it, idx) => (

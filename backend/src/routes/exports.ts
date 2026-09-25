@@ -36,7 +36,7 @@ import {
   sessions,
 } from '../db/schema.js'
 import { authMiddleware, requireRole } from '../middleware/auth.js'
-import { buildDeliveryGroups } from './reports.js'
+import { buildDeliveryGroups, paymentLabel } from './reports.js'
 import type { JWTPayload } from '../utils/jwt.js'
 
 const router = new Hono<{ Variables: { user: JWTPayload } }>()
@@ -458,6 +458,11 @@ router.get(
             cantidad: '',
             precioUnitario: '',
             subtotal: toNumber(order.amount),
+            estadoPago: paymentLabel(String(order.paymentStatus ?? '')).text,
+            saldo:
+              order.paymentStatus === 'paid'
+                ? 0
+                : Math.max(0, toNumber(order.amount) - (result.paidByOrder.get(order.id) ?? 0)),
             dirigidaA,
           })
           continue
@@ -474,6 +479,11 @@ router.get(
             cantidad: it.quantity,
             precioUnitario: unit,
             subtotal: unit * it.quantity,
+            estadoPago: paymentLabel(String(order.paymentStatus ?? '')).text,
+            saldo:
+              order.paymentStatus === 'paid'
+                ? 0
+                : Math.max(0, toNumber(order.amount) - (result.paidByOrder.get(order.id) ?? 0)),
             dirigidaA,
           })
         }
@@ -492,6 +502,8 @@ router.get(
         { header: 'Cantidad', key: 'cantidad', width: 10 },
         { header: 'Precio unitario', key: 'precioUnitario', width: 14 },
         { header: 'Subtotal', key: 'subtotal', width: 12 },
+        { header: 'Estado de pago', key: 'estadoPago', width: 14 },
+        { header: 'Saldo', key: 'saldo', width: 12 },
         { header: 'Entrega dirigida a', key: 'dirigidaA', width: 40 },
       ],
       rows,

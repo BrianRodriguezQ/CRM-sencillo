@@ -68,9 +68,6 @@ const TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 /** Justificación mínima para cancelar (CTO: cancelada requiere justificación). */
 const CANCEL_NOTE_MIN = 4
 
-/** Los pagos ≠ efectivo con comprobante se registran manualmente; efectivo = auto al entregar. */
-const CASH_METHOD_CODE = 'efectivo'
-
 // 500: los modales de actividad (Driver/Seller/CustomerDetail) cargan hasta
 // 200 órdenes por período CON scroll interno (decisión 2-A: el total del
 // período suma todo, no la página visible). El cliente nunca puede pasar de
@@ -1032,38 +1029,10 @@ router.post('/:id/status', zValidator('json', statusSchema), async (c) => {
       }
     }
 
-    // Entregar exige saldo 0. Efectivo pendiente → se cobra en el acto (auto).
-    if (target === 'delivered') {
-      const paid = await paidForOrder(order.id)
-      const total = toNumber(order.amount)
-      let balance = total - paid
-
-      if (balance > 0.005) {
-        const [method] = await db
-          .select({ code: paymentMethods.code })
-          .from(paymentMethods)
-          .where(eq(paymentMethods.id, order.paymentMethodId))
-          .limit(1)
-        if (method?.code === CASH_METHOD_CODE) {
-          await db.insert(orderPayments).values({
-            orderId: order.id,
-            paymentMethodId: order.paymentMethodId,
-            amount: balance.toFixed(2),
-            note: 'Cobro en efectivo en el acto de la entrega',
-            recordedBy: auth.id,
-          })
-          balance = 0
-        } else {
-          return c.json(
-            {
-              success: false,
-              error: `La orden tiene un saldo pendiente de ${balance.toFixed(2)}. Registrá el pago antes de entregar.`,
-            },
-            400,
-          )
-        }
-      }
-    }
+    // CTO 2026-09-24: el conductor NO valida pagos. Entregar NO exige saldo 0 y
+    // NO auto-cobra efectivo: la orden queda con su paymentStatus derivado de los
+    // abonos existentes (pending/partial) y el cobro lo registra Cobranza después
+    // vía POST /:id/payments (que sigue operativo sobre órdenes entregadas).
 
     const patch: Partial<typeof orders.$inferInsert> = {
       orderStatus: target,
@@ -1071,8 +1040,6 @@ router.post('/:id/status', zValidator('json', statusSchema), async (c) => {
     }
     if (target === 'delivered') {
       patch.deliveredAt = new Date()
-      // Con el pago registrado (manual o efectivo auto), la orden queda pagada.
-      patch.paymentStatus = 'paid'
     }
     if (target === 'cancelled') {
       const paid = await paidForOrder(order.id)
@@ -1081,6 +1048,12 @@ router.post('/:id/status', zValidator('json', statusSchema), async (c) => {
     }
 
     await db.update(orders).set(patch).where(eq(orders.id, id))
+
+    // Al entregar el paymentStatus queda derivado de los abonos reales
+    // (pending si no se cobró nada, partial si hubo abonos). No forzamos 'paid'.
+    if (target === 'delivered') {
+      await setDerivedPaymentStatus(order)
+    }
 
     await db.insert(orderStatusHistory).values({
       orderId: id,
@@ -1138,7 +1111,9 @@ router.post('/:id/status', zValidator('json', statusSchema), async (c) => {
 
 /* ─── POST /:id/payments — registrar abono (multipart) ───
  * Cualquiera con acceso a la orden (vendedor, conductor, superadmin) puede
- * registrar un pago mientras la orden no esté entregada ni cancelada.
+ * registrar un pago mientras la orden no esté cancelada. Las órdenes
+ * ENTREGADAS aceptan abonos (CTO 2026-09-24: el conductor no valida pagos,
+ * la entrega deja el pedido en pendiente y Cobranza registra el cobro).
  * Campos: amount*, paymentMethodId? (default = método de la orden),
  * reference?, receipt? (imagen), note?
  * Validación por método: pago móvil = referencia y/o foto; tarjeta /
@@ -1156,9 +1131,11 @@ router.post('/:id/payments', async (c) => {
     if (!order || !canAccessOrder(auth, order)) {
       return c.json({ success: false, error: 'Orden no encontrada' }, 404)
     }
-    if (order.orderStatus === 'delivered' || order.orderStatus === 'cancelled') {
+    // CTO 2026-09-24: las órdenes ENTREGADAS aceptan abonos (cobranza registra el
+    // cobro pendiente que dejó la entrega). Solo las canceladas se cierran al pago.
+    if (order.orderStatus === 'cancelled') {
       return c.json(
-        { success: false, error: 'No se pueden registrar pagos en una orden cerrada' },
+        { success: false, error: 'No se pueden registrar pagos en una orden cancelada' },
         400,
       )
     }
@@ -1296,9 +1273,9 @@ router.delete('/:id/payments/:paymentId', async (c) => {
     if (!order || !canAccessOrder(auth, order)) {
       return c.json({ success: false, error: 'Orden no encontrada' }, 404)
     }
-    if (order.orderStatus === 'delivered' || order.orderStatus === 'cancelled') {
+    if (order.orderStatus === 'cancelled') {
       return c.json(
-        { success: false, error: 'No se pueden eliminar pagos de una orden cerrada' },
+        { success: false, error: 'No se pueden eliminar pagos de una orden cancelada' },
         400,
       )
     }
